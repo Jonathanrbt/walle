@@ -2,23 +2,25 @@ import { isFinalizedGrantWithAccessToken, isPendingGrant } from '@interledger/op
 
 import { PaymentsNetworkError } from '../../cash-in/payments-network.ts'
 import type { Money } from '../../shared/money.ts'
+import type { Clock } from '../../shared/ports.ts'
 import type { GrantGateway } from '../../store-grant/gateway.ts'
 import { toSdkAmount } from './amount.ts'
 import type { WalletSession } from './clients.ts'
 import { attempt } from './map-error.ts'
 
 const DEFAULT_EXPIRES_IN_SECONDS = 600
+const systemClock: Clock = { now: () => new Date() }
 
-export function createGrantGateway(store: WalletSession): GrantGateway {
+export function createGrantGateway(store: WalletSession, clock: Clock = systemClock): GrantGateway {
   return {
     start(input) {
       return start(store, input)
     },
     finish(input) {
-      return finish(store, input)
+      return finish(store, input, clock)
     },
     rotate(input) {
-      return rotate(store, input)
+      return rotate(store, input, clock)
     },
   }
 }
@@ -79,6 +81,7 @@ async function start(
 async function finish(
   store: WalletSession,
   input: { continueUri: string; continueAccessToken: string; interactRef: string },
+  clock: Clock,
 ): Promise<{ accessToken: string; manageUrl: string; tokenExpiresAt: Date }> {
   return attempt(async () => {
     const continued = await store.client.grant.continue(
@@ -88,24 +91,28 @@ async function finish(
     if (!isFinalizedGrantWithAccessToken(continued)) {
       throw new PaymentsNetworkError('unavailable', 'outgoing grant is not finalized')
     }
-    return tokenResult(continued.access_token)
+    return tokenResult(continued.access_token, clock)
   })
 }
 
 async function rotate(
   store: WalletSession,
   input: { manageUrl: string; accessToken: string },
+  clock: Clock,
 ): Promise<{ accessToken: string; manageUrl: string; tokenExpiresAt: Date }> {
   return attempt(async () => {
     const rotated = await store.client.token.rotate({
       url: input.manageUrl,
       accessToken: input.accessToken,
     })
-    return tokenResult(rotated.access_token)
+    return tokenResult(rotated.access_token, clock)
   })
 }
 
-function tokenResult(token: { value: string; manage: string; expires_in?: number }): {
+function tokenResult(
+  token: { value: string; manage: string; expires_in?: number },
+  clock: Clock,
+): {
   accessToken: string
   manageUrl: string
   tokenExpiresAt: Date
@@ -113,7 +120,7 @@ function tokenResult(token: { value: string; manage: string; expires_in?: number
   return {
     accessToken: token.value,
     manageUrl: token.manage,
-    tokenExpiresAt: expiry(token.expires_in, new Date()),
+    tokenExpiresAt: expiry(token.expires_in, clock.now()),
   }
 }
 

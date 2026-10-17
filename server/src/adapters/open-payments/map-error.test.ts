@@ -8,12 +8,12 @@ const TOKEN = 'super-secret-access-token-value'
 
 describe('mapOpenPaymentsError', () => {
   it.each([
-    [400, 'rejected'],
-    [401, 'unauthorized'],
-    [403, 'unauthorized'],
-    [500, 'unavailable'],
-    [503, 'unavailable'],
-  ] as const)('maps HTTP %s to %s', (status, kind) => {
+    [400, 'rejected', false],
+    [401, 'unauthorized', false],
+    [403, 'unauthorized', false],
+    [500, 'unavailable', true],
+    [503, 'unavailable', true],
+  ] as const)('maps HTTP %s to %s', (status, kind, retryable) => {
     const error = new OpenPaymentsClientError('request failed', {
       description: 'non-positive receive amount',
       status,
@@ -21,12 +21,14 @@ describe('mapOpenPaymentsError', () => {
     const mapped = mapOpenPaymentsError(error)
     expect(mapped).toBeInstanceOf(PaymentsNetworkError)
     expect(mapped.kind).toBe(kind)
+    expect(mapped.retryable).toBe(retryable)
     expect(mapped.detail).toBe('non-positive receive amount')
   })
 
   it('maps a network failure with no status to unavailable', () => {
     const mapped = mapOpenPaymentsError(new TypeError('fetch failed'))
     expect(mapped.kind).toBe('unavailable')
+    expect(mapped.retryable).toBe(true)
     expect(mapped.detail).not.toContain('fetch failed')
   })
 

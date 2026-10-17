@@ -8,12 +8,15 @@ export type OutgoingPaymentStatus = 'pending' | 'paid' | 'failed'
 export class PaymentsNetworkError extends Error {
   readonly kind: PaymentsFailureKind
   readonly detail: string
+  /** True only for `unavailable`, which a caller may retry. */
+  readonly retryable: boolean
 
   constructor(kind: PaymentsFailureKind, detail: string) {
     super(detail)
     this.name = 'PaymentsNetworkError'
     this.kind = kind
     this.detail = detail
+    this.retryable = kind === 'unavailable'
   }
 }
 
