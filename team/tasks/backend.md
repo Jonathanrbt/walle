@@ -100,7 +100,7 @@ server/test/                  # dobles, suites de contrato de puertos, e2e testn
 ## Tareas
 Cada tarea: rama `feat/jonatin-backend`, prueba primero, verificación con los comandos indicados, commit de unidad de trabajo, evidencia aquí.
 
-- [ ] **B0 Monorepo y esqueleto de `server/`**: `package.json` raíz con workspaces, `server/` con TS estricto + `erasableSyntaxOnly`, ESLint con tipos, Prettier, Vitest con cobertura, `config.ts` (Zod, mensajes sin valores), `pino` con redacción, fábrica `buildApp()` de Fastify, `GET /healthz`, `server/.env.example`, `server/data/` en `.gitignore`. Verificar que `node:sqlite` y la eliminación de tipos funcionan en Node 24 y 26.
+- [x] **B0 Monorepo y esqueleto de `server/`**: `package.json` raíz con workspaces, `server/` con TS estricto + `erasableSyntaxOnly`, ESLint con tipos, Prettier, Vitest con cobertura, `config.ts` (Zod, mensajes sin valores), `pino` con redacción, fábrica `buildApp()` de Fastify, `GET /healthz`, `server/.env.example`, `server/data/` en `.gitignore`. Verificar que `node:sqlite` y la eliminación de tipos funcionan en Node 24 y 26.
   - Acepta: `npm run -w server typecheck`, `lint`, `test` en verde; prueba de `/healthz` con `inject()`; la configuración inválida falla al arrancar sin imprimir valores.
 - [ ] **B1 Paquete de contratos**: esquemas Zod de todas las formas de `team/contracts.md` (`CashIn`, `Rate`, `Grant`, `Inventory`, `ApiError`, solicitudes) y tipos inferidos; montos como string decimal validado.
   - Acepta: pruebas con ejemplos válidos e inválidos por esquema; los tipos inferidos coinciden con `web/src/api/types.ts` (prueba de tipos con `expectTypeOf`, sin importar desde `web/`).
@@ -153,11 +153,12 @@ Entrega: PRs encadenados a `main` cada 2–3 tareas (≈400 líneas por PR): B0�
 4. Caída de testnet durante la demo → `grant` aprobado de antemano, inventario prefondeado y el procesador reanuda al volver la red.
 
 ## Evidencia
-_Pendiente_
+- B0 (2026-10-17, commit `fee2141`): ROJO observado (2 archivos sin módulo); VERDE: `typecheck`, `lint`, `format:check` y `vitest` 17/17; `node src/main.ts` arranca con la eliminación nativa de tipos y `/healthz` responde 200; `node:sqlite` importa en Node 24.5 (aviso de API experimental); el `.env` real carga (ajuste: las direcciones de billetera aceptan `$host/ruta`, `host/ruta` o URL completa); 13 pruebas de `scripts/` en verde; 0 valores de `.env` en el diff. Riesgo evaluado: medio, revisión nativa concedida y aprobada con 3 hallazgos informativos (validación del archivo de llave, cobertura de ramas de `loadConfig`, comodines de `redact`), pendientes para B12. Versiones fijadas: fastify 5.12.5, zod 4.6.5, fastify-type-provider-zod 7.0.0, typescript 6.0.3, vitest 5.0.3, eslint 10.12.0, typescript-eslint 8.71.0, prettier 3.9.9, fast-check 4.10.2.
 
 ## Progreso
 2026-10-16: plan y reclamo creados.
+2026-10-17: B0 listo (`fee2141`). Siguiente tanda en paralelo con un `git worktree` por worker: B1, B2 y una sonda de COP → USD en testnet.
 2026-10-17: credenciales listas en `.env` (billetera USD del operador, cuenta Stellar del operador fondeada con friendbot). Se mantiene el plan completo B0–B12. Reclamo en `in-progress`.
 
 ## Siguiente paso
-B0.
+Tanda 1: B1 + B2 + sonda de testnet (paralelo); luego B3, B5, B8.
