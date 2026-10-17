@@ -55,10 +55,10 @@ Qué billeteras son emisor y receptor, y dónde vive cada paso en el código:
 
 | Paso | Qué ocurre | Dónde (archivo/módulo) | Dueño |
 |---|---|---|---|
-| Solicitud de pago (`incoming payment` / `quote`) | El operador crea un `incoming payment` en su billetera COP por el monto en efectivo; la billetera de la tienda lo cotiza (`quote`) | _Pendiente_ | _Pendiente_ |
-| Autorización (`grant` GNAP + consentimiento) | El dueño de la tienda aprueba UN `grant` de `outgoing payment` por día con un límite diario en COP (`interval` P1D) | _Pendiente_ | _Pendiente_ |
-| Ejecución del pago (`outgoing payment`) | La billetera de la tienda paga al operador por cada ingreso de efectivo, reutilizando el `grant` diario (rotación de tokens) | _Pendiente_ | _Pendiente_ |
-| Finalización exitosa mostrada al usuario | El operador ve el `incoming payment` con `completed` y entonces envía USDC en Stellar; el cliente lo ve en Freighter | _Pendiente_ | _Pendiente_ |
+| Solicitud de pago (`incoming payment` / `quote`) | El operador crea un `incoming payment` en su billetera USD (escala 2, sin monto fijo); la billetera COP de la tienda lo cotiza (`quote`) con el efectivo como débito fijo | `server/src/cash-in/application/create-cash-in.ts`, `server/src/adapters/open-payments/payments-network.ts` | backend (jonatin) |
+| Autorización (`grant` GNAP + consentimiento) | El dueño de la tienda aprueba UN `grant` de `outgoing payment` por día con un límite diario en COP (`interval` P1D) | `server/src/store-grant/application/store-grant-service.ts`, `server/src/adapters/open-payments/grant-gateway.ts` | backend (jonatin) |
+| Ejecución del pago (`outgoing payment`) | La billetera de la tienda paga al operador por cada ingreso de efectivo, reutilizando el `grant` diario (rotación de tokens) | `server/src/cash-in/application/confirm-cash-in.ts`, `server/src/cash-in/application/settlement-processor.ts` | backend (jonatin) |
+| Finalización exitosa mostrada al usuario | El operador ve el pago recibido, completa el `incoming payment` y entonces envía USDC en Stellar; el cliente lo ve en Freighter | `server/src/cash-in/application/settlement-processor.ts`, `server/src/adapters/stellar/usdc-network.ts` | backend (jonatin) |
 
 Emisor: la billetera de Open Payments del punto de efectivo (COP, testnet). Receptor: la billetera de Open Payments del operador (COP u otra divisa, testnet). Lado del cliente: billetera de USDC en Stellar testnet (Freighter).
 
@@ -68,7 +68,14 @@ Emisor: la billetera de Open Payments del punto de efectivo (COP, testnet). Rece
 - Fuera (explícitamente no se hace): dinero real o mainnet, KYC o prueba de vida reales, hardware de cajero físico, integración con un exchange para la reposición (un botón rellena USDC de prueba), autoalojar Rafiki, estándares de ancla de Stellar (SEP-24).
 
 ## Tecnología y arquitectura
-_Pendiente_
+- **Lenguaje y ejecución:** Node.js ≥ 24 con TypeScript estricto, ejecutado directamente por Node (sin paso de compilación); `tsc` solo verifica los tipos. Monorepo con `npm workspaces`: `server/` (backend) y `packages/contracts/` (esquemas Zod del API, fuente de verdad de las formas HTTP). `web/` (front de otro integrante) queda fuera de los workspaces y conserva su propio lockfile.
+- **Arquitectura hexagonal** en `server/src`: dominio puro (`cash-in/domain`, `pricing`, `compliance`, `shared`), servicios de aplicación (`cash-in/application`, `store-grant/application`, `treasury/application`) que dependen solo de puertos, y adaptadores (`adapters/open-payments`, `adapters/stellar`, `adapters/sqlite`, `adapters/http`). `compose.ts` es el único punto de composición.
+- **Dinero:** `bigint` en unidades menores con `assetCode` y `assetScale`, nunca `number`. El USDC que recibe el cliente se redondea hacia abajo; el spread, hacia arriba.
+- **Persistencia:** SQLite (`node:sqlite`) con migraciones versionadas y guardado con control de versión optimista; el estado de cada ingreso sobrevive a un reinicio.
+- **Liquidación:** un procesador dentro del proceso avanza cada ingreso un paso durable por pasada. El sobre de Stellar se firma y se guarda antes de enviarse; un reintento reenvía el mismo sobre y solo se reconstruye cuando se demuestra que el anterior nunca podrá aplicarse (doble verificación espaciada), de modo que el USDC sale como máximo una vez.
+- **Open Payments:** SDK `@interledger/open-payments` 7.4.0; `grant` de salida interactivo con `interval` diario, rotación de tokens serializada que conserva el resultado tardío, y recuperación de un pago saliente por su `quote`.
+- **Stellar:** `@stellar/stellar-sdk` 14, testnet; envío de USDC con `memo`, recarga del inventario por `path payment` XLM → USDC.
+- **Pruebas:** Vitest; propiedades con `fast-check` sobre el dinero y la máquina de estados; suites de contrato por puerto que corren contra el doble en memoria y, con `TESTNET=1`, contra la red real; pruebas de recuperación ante caídas y de dos procesadores; pruebas de que el contrato coincide con los tipos del front. Cada unidad de trabajo pasó una revisión nativa y sus hallazgos se anotan en `team/tasks/backend.md`.
 
 ## Guion de la demo (5 min: reto → usuario → solución → pago en vivo → conclusiones)
 _Pendiente_
