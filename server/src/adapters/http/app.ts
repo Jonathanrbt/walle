@@ -10,7 +10,7 @@ import type { Clock } from '../../shared/ports.ts'
 import type { RateProvider } from '../../pricing/rate-provider.ts'
 import type { OperatorService } from '../../treasury/application/operator-service.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
-import { installErrorHandler } from './errors.ts'
+import { AppError, installErrorHandler } from './errors.ts'
 import { loggerOptions, type LoggerOptions } from './logger.ts'
 import { registerCashInRoutes, type CashInRoutes } from './routes/cash-ins.ts'
 import { registerGrantRoutes } from './routes/grant.ts'
@@ -41,6 +41,18 @@ export function buildApp(deps: BuildAppDeps) {
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
   installErrorHandler(app, deps.webBaseUrl)
+  // Fastify rejects an empty body that declares JSON; action endpoints (confirm, retry, refill) have none.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+    if (body === '') {
+      done(null, undefined)
+      return
+    }
+    try {
+      done(null, JSON.parse(body as string))
+    } catch {
+      done(new AppError('invalid_request', 'malformed JSON body'))
+    }
+  })
 
   app.get(
     '/healthz',

@@ -338,6 +338,57 @@ describe('HTTP error handler', () => {
     }
   })
 
+  describe('request bodies', () => {
+    function bodyApp() {
+      return buildApp({
+        logger: false,
+        rate: { current: () => Promise.reject(new Error('unused')) },
+        storeGrant: {
+          start: () => Promise.reject(new Error('unused')),
+          finish: () => Promise.reject(new Error('unused')),
+          status: () => Promise.reject(new Error('unused')),
+        },
+        cashIns: unusedCashIns,
+        operator: {
+          ...unusedOperator,
+          refill: () => Promise.resolve({ usdc: money(10_000n, 'USDC', 2) }),
+        },
+        webBaseUrl: WEB,
+      })
+    }
+
+    it('accepts a POST that declares JSON but sends no body', async () => {
+      const app = bodyApp()
+      try {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/operator/inventory/refill',
+          headers: { 'content-type': 'application/json' },
+        })
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual({ usdc: '100.00' })
+      } finally {
+        await app.close()
+      }
+    })
+
+    it('maps malformed JSON to a 400 invalid_request', async () => {
+      const app = bodyApp()
+      try {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/operator/inventory/refill',
+          headers: { 'content-type': 'application/json' },
+          payload: '{not json',
+        })
+        expect(response.statusCode).toBe(400)
+        expect(ApiError.parse(response.json()).error).toBe('invalid_request')
+      } finally {
+        await app.close()
+      }
+    })
+  })
+
   it('logs an uncaught invalid amount as an internal error', async () => {
     const logs: string[] = []
     const app = appWith(new DomainError('invalid_amount', 'rescale would drop digits'), logs)

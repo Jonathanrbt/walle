@@ -55,6 +55,8 @@ export function installErrorHandler(app: FastifyInstance, webBaseUrl: string): v
       return sendApi(reply, 'invalid_request', zodDetail)
     }
 
+    if (isClientError(error)) return sendApi(reply, 'invalid_request')
+
     request.log.error({ reqId: request.id, err: error }, 'unhandled error')
     return sendApi(reply, 'internal_error')
   })
@@ -73,6 +75,18 @@ function logFinishFailure(request: FastifyRequest, error: unknown): void {
     return
   }
   request.log.error({ reqId: request.id, name: error.name }, 'grant finish failed')
+}
+
+/** Fastify 4xx failures (bad body, unsupported media type, payload too large) are the caller's fault. */
+function isClientError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    typeof error.statusCode === 'number' &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500
+  )
 }
 
 function isNotFound(error: unknown): boolean {
