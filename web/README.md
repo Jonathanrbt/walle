@@ -33,6 +33,16 @@ npm run dev
 5. La línea de tiempo muestra Solicitud de pago → Autorización → Ejecución del pago → Finalización → USDC en tu billetera, y luego el comprobante.
 6. `/operador` muestra el pago completado y el inventario descontado.
 
+## Diseño
+
+El estilo es de ilustración isométrica en blanco y negro, con trazo fino, un acento verde (éxito) y uno azul (en curso). No usa imágenes ni dependencias extra.
+
+- `src/styles.css`: tokens en `:root` (paleta, trazo, radios, curvas `--ease` y `--spring`), tarjetas extruidas, botones con profundidad y la retícula de fondo.
+- `src/iso/`: `iso.ts` proyecta puntos 3D a la pantalla; `shapes.tsx` dibuja cajas, cilindros y caras; `scenes.tsx` arma las escenas del cajero, la tienda y el operador, y los cubos de la línea de tiempo.
+- `src/cajero/Banknote.tsx`: billetes al estilo colombiano, con el color y el largo real de cada denominación. Son estilizados y llevan la marca «MUESTRA · SIN VALOR».
+- `src/cajero/Billetes.tsx`: arrastre con Pointer Events. El billete se inclina según la velocidad y gira desde donde se agarró. La ranura lo traga, o lo devuelve si supera el límite. Tocar el billete o presionar Enter hace el mismo recorrido.
+- Con `prefers-reduced-motion` se desactivan las animaciones y el flujo funciona igual.
+
 ## Ensayar fallos
 
 Agrega `?fallo=` a la URL del cajero:

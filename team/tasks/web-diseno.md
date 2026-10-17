@@ -1,6 +1,6 @@
 ---
 owner: andss-ye
-status: in-progress
+status: review
 branch: feat/andss-ye-web-diseno
 paths:
   - web/**
@@ -86,16 +86,16 @@ La UI actual (W1–W9 de `web-cajero.md`) es funcional, pero parece una pantalla
 
 Los tonos se aplican con las clases `iso-plain` y similares, definidas en `styles.css`. Por tono, la cara superior es la más clara, la izquierda es intermedia y la derecha la más oscura.
 
-- [ ] **D1.1 Pruebas que fallan** (`iso.test.ts`):
+- [x] **D1.1 Pruebas que fallan** (`iso.test.ts`):
   - `iso(1,0,0)` ≈ `[0.866, 0.5]`; `iso(0,1,0)` ≈ `[-0.866, 0.5]`; `iso(0,0,1)` = `[0,-1]`.
   - `points([0,0,0],[1,0,0])` = `'0,0 0.87,0.5'`.
   - `box(0,0,0,1,1,1).top` empieza en `'0,-1 '` y tiene 4 puntos.
   - `box(...).right` incluye `iso(1,1,0)` (`'0,1'`).
   - `cylinder(0,0,0,1,2)` da `rx` ≈ 1.2247, `ry` ≈ 0.7071, `topY` = −2 y `bottomY` = 0.
-- [ ] **D1.2** `npm test`: falla porque falta el módulo.
-- [ ] **D1.3** Implementar `iso.ts` y `shapes.tsx` (`IsoCylinder` es un path con el lado y el arco inferior, más una elipse superior).
-- [ ] **D1.4** `npm test`: pasa.
-- [ ] **D1.5** Commit: `feat: ✨ add isometric drawing primitives`.
+- [x] **D1.2** `npm test`: falla porque falta el módulo.
+- [x] **D1.3** Implementar `iso.ts` y `shapes.tsx` (`IsoCylinder` es un path con el lado y el arco inferior, más una elipse superior).
+- [x] **D1.4** `npm test`: pasa.
+- [x] **D1.5** Commit: `feat: ✨ add isometric drawing primitives`.
 
 ### D2 — Sistema de diseño y shell
 **Archivos:** reescribir `web/src/styles.css`; crear `web/src/iso/scenes.tsx` (por ahora solo `Logo`); modificar `web/src/App.tsx`.
@@ -107,10 +107,10 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
 - Tarjetas «extruidas» (`.panel`, `.atm`): borde de tinta y `box-shadow: 8px 8px 0 -1px var(--face-2), 8px 8px 0 0 var(--ink)`.
 - Fondo: `--bg` con una retícula isométrica punteada muy tenue (SVG en un data URI, líneas a ±30°).
 
-- [ ] **D2.1** Reescribir `styles.css` con los tokens, el shell y los componentes base. Agregar `.screen-in` (entrada de 260 ms con opacidad y `translateY(6px)`) y las clases de tono iso.
-- [ ] **D2.2** `Logo` (un cubo de 3 caras con la cara superior en acento) más «walle» en `App.tsx`. El badge «API simulada · testnet» lleva un punto azul.
-- [ ] **D2.3** Verificar: `npm run build` en verde y captura de `/` sin errores de consola.
-- [ ] **D2.4** Commit: `feat: 💄 add isometric line design system and app shell`.
+- [x] **D2.1** Reescribir `styles.css` con los tokens, el shell y los componentes base. Agregar `.screen-in` (entrada de 260 ms con opacidad y `translateY(6px)`) y las clases de tono iso.
+- [x] **D2.2** `Logo` (un cubo de 3 caras con la cara superior en acento) más «walle» en `App.tsx`. El badge «API simulada · testnet» lleva un punto azul.
+- [x] **D2.3** Verificar: `npm run build` en verde y captura de `/` sin errores de consola.
+- [x] **D2.4** Commit: `feat: 💄 add isometric line design system and app shell`.
 
 ### D3 — Billetes colombianos
 **Archivos:** modificar `web/src/cajero/cash.ts` y `cash.test.ts`; crear `web/src/cajero/Banknote.tsx`.
@@ -137,14 +137,14 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
   6. El número grande `{bill/1000}` con «MIL» arriba a la izquierda.
   7. «COLOMBIA», las palabras de la denominación y «MUESTRA · SIN VALOR» en microtexto.
 
-- [ ] **D3.1** Prueba que falla, `BILL_DESIGN covers every denomination with growing length`:
+- [x] **D3.1** Prueba que falla, `BILL_DESIGN covers every denomination with growing length`:
   - Cada `DENOMINATIONS` tiene diseño.
   - Los largos son `[128,133,138,143,148,153]`.
   - `BILL_DESIGN[50000].words` = `'CINCUENTA MIL PESOS'`.
-- [ ] **D3.2** `npm test`: falla.
-- [ ] **D3.3** Implementar `BILL_DESIGN`, `BILL_HEIGHT_MM` y `Banknote.tsx`, y reemplazar `BillNote` por `Banknote` en todos sus usos.
-- [ ] **D3.4** `npm test`: pasa. Revisar en captura que los 6 billetes se distingan por color y por largo.
-- [ ] **D3.5** Commit: `feat: 💄 draw Colombian-style banknotes`.
+- [x] **D3.2** `npm test`: falla.
+- [x] **D3.3** Implementar `BILL_DESIGN`, `BILL_HEIGHT_MM` y `Banknote.tsx`, y reemplazar `BillNote` por `Banknote` en todos sus usos.
+- [x] **D3.4** `npm test`: pasa. Revisar en captura que los 6 billetes se distingan por color y por largo.
+- [x] **D3.5** Commit: `feat: 💄 draw Colombian-style banknotes`.
 
 ### D4 — Arrastre físico y ranura
 **Archivos:** crear `web/src/cajero/drag.ts` y `drag.test.ts`; reescribir `Wallet` y `DropZone` en `web/src/cajero/Billetes.tsx` y su `billetes.css`; modificar `web/src/views/Cajero.tsx`.
@@ -174,7 +174,7 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
 - Con el teclado (`click` con `detail === 0`) se usa el mismo camino que el toque.
 - La ranura traga el billete con `.slot-feed`: baja una altura completa mientras `clip-path: inset(0 0 100% 0)` lo recorta, en 600 ms.
 
-- [ ] **D4.1** Pruebas que fallan (`drag.test.ts`):
+- [x] **D4.1** Pruebas que fallan (`drag.test.ts`):
   - `tilt(0)` = 0; `tilt(0.5)` = 9; `tilt(5)` = 14; `tilt(-5)` = −14.
   - `inside` incluye los bordes y excluye `x = right + 1`.
   - `dropOutcome`:
@@ -182,16 +182,16 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
     - dentro y no permitido da `'reject'`;
     - fuera da `'return'`;
     - con `target` en `null` da `'return'`.
-- [ ] **D4.2** `npm test`: falla.
-- [ ] **D4.3** Implementar `drag.ts`, la billetera con pilas y arrastre, y la ranura que traga o devuelve.
-- [ ] **D4.4** `npm test`: pasa.
-- [ ] **D4.5** Verificar en el navegador:
+- [x] **D4.2** `npm test`: falla.
+- [x] **D4.3** Implementar `drag.ts`, la billetera con pilas y arrastre, y la ranura que traga o devuelve.
+- [x] **D4.4** `npm test`: pasa.
+- [x] **D4.5** Verificar en el navegador:
   - Arrastrar con el mouse inserta el billete.
   - Soltar fuera lo devuelve.
   - Un billete de 100.000 con 90 USDC ya cargados se devuelve con el aviso.
   - El toque y la tecla Enter insertan.
   - A 375 px, arrastrar no desplaza la página.
-- [ ] **D4.6** Commit: `feat: ✨ drag banknotes with pointer physics into the cashier slot`.
+- [x] **D4.6** Commit: `feat: ✨ drag banknotes with pointer physics into the cashier slot`.
 
 ### D5 — Pantallas del cajero
 **Archivos:** modificar `web/src/views/Cajero.tsx`, `web/src/cajero/Proceso.tsx` y `web/src/iso/scenes.tsx`.
@@ -210,9 +210,9 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
 - La línea de tiempo usa `PhaseCube` en lugar del círculo numerado. Un conector punteado vertical une las fases, y el tramo activo fluye con `stroke-dashoffset`.
 - `Receipt` se renderiza como un tique de papel (`.ticket`) con el borde inferior en zigzag (`mask` con `conic-gradient`) que sale «impreso» con `clip-path` de arriba hacia abajo en 700 ms.
 
-- [ ] **D5.1** Implementar `AtmScene`, `PhaseCube`, las transiciones, la línea de tiempo y el tique.
-- [ ] **D5.2** Verificar en el navegador el recorrido completo simulado: inicio → datos → dirección → billetes → cotización → proceso → comprobante, y también `?fallo=stellar` y `?fallo=pago`. Sin errores en consola.
-- [ ] **D5.3** Commit: `feat: 💄 restyle cashier screens with isometric scene, timeline cubes and printed receipt`.
+- [x] **D5.1** Implementar `AtmScene`, `PhaseCube`, las transiciones, la línea de tiempo y el tique.
+- [x] **D5.2** Verificar en el navegador el recorrido completo simulado: inicio → datos → dirección → billetes → cotización → proceso → comprobante, y también `?fallo=stellar` y `?fallo=pago`. Sin errores en consola.
+- [x] **D5.3** Commit: `feat: 💄 restyle cashier screens with isometric scene, timeline cubes and printed receipt`.
 
 ### D6 — Tienda y operador
 **Archivos:** modificar `web/src/views/Tienda.tsx`, `web/src/views/Operador.tsx` y `web/src/iso/scenes.tsx`.
@@ -221,24 +221,44 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
 - `<StoreScene active: boolean />`: un edificio con toldo, puerta y un cajero pequeño al frente. Con `grant` activo lleva una llave o cubo en acento sobre el techo; si no, en `plain`.
 - `<ServerScene pct: number />`: un servidor de dos cuerpos con rejilla y 3 puntos azules que pulsan, más una columna de monedas apiladas. La columna tiene `round(pct / 10)` monedas, de 0 a 10, y va en peligro si `pct` < 30.
 
-- [ ] **D6.1** `/tienda` muestra la escena al lado de las estadísticas, y el consentimiento simulado queda como una tarjeta blanca de billetera. `/operador` muestra la escena con la columna de inventario y una tabla con líneas finas.
-- [ ] **D6.2** Verificar en el navegador:
+- [x] **D6.1** `/tienda` muestra la escena al lado de las estadísticas, y el consentimiento simulado queda como una tarjeta blanca de billetera. `/operador` muestra la escena con la columna de inventario y una tabla con líneas finas.
+- [x] **D6.2** Verificar en el navegador:
   - `/tienda?reiniciar=1` → «Autorizar el día» → Aceptar: el cubo del techo se pone verde.
   - En `/operador`, después de un pago, la columna baja; con «Reponer» vuelve a 10.
-- [ ] **D6.3** Commit: `feat: 💄 add isometric store and operator scenes`.
+- [x] **D6.3** Commit: `feat: 💄 add isometric store and operator scenes`.
 
 ### D7 — Verificación, documentación y limpieza
-- [ ] **D7.1** `npm test` y `npm run build` en verde. Capturas a 1280 px y a 375 px de `/`, `/tienda` y `/operador`, sin scroll horizontal y sin errores en consola.
-- [ ] **D7.2** Revisar con movimiento reducido: insertar sigue funcionando.
-- [ ] **D7.3** Actualizar `web/README.md` (sección «Diseño») y la evidencia de este documento.
-- [ ] **D7.4** Cerrar el servidor de desarrollo por PID y confirmar que `lsof` no muestra ningún proceso escuchando. Revisar `git status --untracked-files=all`.
-- [ ] **D7.5** Commit: `docs: 📝 document isometric design system`.
+- [x] **D7.1** `npm test` y `npm run build` en verde. Capturas a 1280 px y a 375 px de `/`, `/tienda` y `/operador`, sin scroll horizontal y sin errores en consola.
+- [x] **D7.2** Revisar con movimiento reducido: insertar sigue funcionando.
+- [x] **D7.3** Actualizar `web/README.md` (sección «Diseño») y la evidencia de este documento.
+- [x] **D7.4** Cerrar el servidor de desarrollo por PID y confirmar que `lsof` no muestra ningún proceso escuchando. Revisar `git status --untracked-files=all`.
+- [x] **D7.5** Commit: `docs: 📝 document isometric design system`.
 
 ## Evidencia
-Se llena al terminar cada tarea.
+- **D1:** `iso.test.ts` falló porque faltaba el módulo y pasó tras implementarlo (4 pruebas). En macOS, `Iso.tsx` chocaba con `iso.ts` porque el sistema de archivos no distingue mayúsculas; se renombró a `shapes.tsx`.
+- **D2:** `npm run build` en verde. Captura de `/tienda` con el shell, la retícula y las tarjetas extruidas, sin errores de consola.
+- **D3:** la prueba `BILL_DESIGN covers every denomination with growing length` falló y luego pasó. En la captura de la billetera, los 6 billetes se distinguen por color y por largo.
+- **D4:** `drag.test.ts` falló y luego pasó (3 pruebas). En el navegador integrado (Chrome):
+  - Arrastrar el 50.000 con el mouse real lo insertó.
+  - Soltar el 10.000 fuera del cajero lo devolvió (siguió ×4).
+  - Tocar el 100.000 y el 50.000 los insertó.
+  - Con 97,08 USDC, el 20.000 llegó a la ranura, se encendió el anillo rojo, apareció el aviso «supera el límite de 100 USDC» y el billete volvió (×3).
+  - Enter sobre la pila del 2.000 lo insertó.
+  - A 375 px, `scrollWidth` = 375 y `touch-action: none` en las pilas; arrastrar a la ranura insertó.
+  - Con `matchMedia` de movimiento reducido forzado, el billete se insertó sin dejar ningún fantasma.
+  - Se corrigió una condición de carrera: dos toques seguidos usaban el estado viejo. Ahora la caída lee los callbacks vigentes por `ref` y `setBills` es funcional.
+- **D5:** recorrido simulado completo (inicio con escena → datos → dirección → billetes → cotización → 5 cubos que pasan a verde → tique impreso). Con `?fallo=stellar`, el último cubo queda en rojo con «Reintentar envío». Consola sin errores. Con el panel oculto, el navegador no pinta frames y las animaciones esperan; no es un fallo de la app.
+- **D6:**
+  - `/tienda?reiniciar=1` → «Autorizar el día» → Aceptar: el cubo del techo y el toldo pasan a verde.
+  - En `/operador`, con el saldo base simulado en 200 USDC, aparecen 2 monedas rojas y el aviso del 30 %. «Reponer» vuelve a 10 monedas azules.
+  - Se corrigió `var(--error)`, un token viejo, por `var(--danger)`.
+- **D7:**
+  - `npm test`: 23/23. `npm run build` en verde.
+  - A 375 px, `scrollWidth` = `clientWidth` = 375 en `/`, `/tienda` y `/operador`, y la billetera queda fija abajo en el cajero.
+  - Sin errores en consola.
 
 ## Progreso
-D1–D7 en curso en `feat/andss-ye-web-diseno`.
+D1–D7 completas en `feat/andss-ye-web-diseno`.
 
 ## Siguiente paso
-D1.
+Abrir el PR hacia `main`. Falta probar a mano el arrastre táctil en un teléfono real; el navegador de pruebas envía eventos de mouse.
