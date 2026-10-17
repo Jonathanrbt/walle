@@ -1,5 +1,15 @@
 import { useState, type DragEvent, type ReactNode } from 'react'
-import { DENOMINATIONS, formatCop, remaining, type Bill } from './cash'
+import {
+  DENOMINATIONS,
+  formatCop,
+  formatUsdc,
+  grouped,
+  remaining,
+  TIER1_TX_USDC_CENTS,
+  total,
+  usdcCents,
+  type Bill,
+} from './cash'
 import './billetes.css'
 
 const DRAG_TYPE = 'text/plain'
@@ -102,5 +112,68 @@ export function DropZone({
         )}
       </div>
     </section>
+  )
+}
+
+/** Bill insertion screen: running totals against the tier 1 per-transaction limit. */
+export function BillsScreen({
+  bills,
+  copPerUsdc,
+  onUndo,
+  onCancel,
+  onContinue,
+}: {
+  bills: Bill[]
+  copPerUsdc: number | null
+  onUndo: () => void
+  onCancel: () => void
+  onContinue: () => void
+}) {
+  const cop = total(bills)
+  const cents = copPerUsdc ? usdcCents(cop, copPerUsdc) : 0
+  return (
+    <>
+      <p className="atm-kicker">Paso 5 de 5 · Inserte sus billetes</p>
+      <p className="atm-total" aria-live="polite">
+        {formatCop(cop)} <small>COP</small>
+      </p>
+      <p className="atm-usdc">
+        ≈ {copPerUsdc ? formatUsdc(cents) : '…'} <small>USDC</small>
+      </p>
+      <div
+        className="atm-meter"
+        role="meter"
+        aria-label="Límite por operación"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={cents / 100}
+      >
+        <span style={{ width: `${Math.min(100, (cents / TIER1_TX_USDC_CENTS) * 100)}%` }} />
+      </div>
+      <p className="atm-dim">
+        Límite por operación: 100 USDC ·{' '}
+        {copPerUsdc ? `1 USDC = ${formatCop(copPerUsdc)} (tasa de referencia del operador)` : 'tasa no disponible'}
+      </p>
+      {bills.length > 0 && (
+        <ul className="atm-bills">
+          {grouped(bills).map((g) => (
+            <li key={g.bill}>
+              {g.count} × {formatCop(g.bill)}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="atm-actions">
+        <button type="button" className="atm-btn atm-btn-ghost" onClick={onCancel}>
+          Cancelar
+        </button>
+        <button type="button" className="atm-btn atm-btn-ghost" disabled={bills.length === 0} onClick={onUndo}>
+          Deshacer último
+        </button>
+        <button type="button" className="atm-btn" disabled={bills.length === 0 || !copPerUsdc} onClick={onContinue}>
+          Continuar
+        </button>
+      </div>
+    </>
   )
 }

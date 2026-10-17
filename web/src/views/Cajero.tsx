@@ -1,25 +1,31 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
-import { DropZone, Wallet } from '../cajero/Billetes'
+import { api, ApiError, type ApiErrorCode, type CashIn, type Customer } from '../api'
+import { BillsScreen, DropZone, Wallet } from '../cajero/Billetes'
+import { fits, formatCop, remaining, total, type Bill } from '../cajero/cash'
 import { FieldStep } from '../cajero/Datos'
 import { AddressStep } from '../cajero/Direccion'
-import {
-  fits,
-  formatCop,
-  formatUsdc,
-  grouped,
-  remaining,
-  TIER1_TX_USDC_CENTS,
-  total,
-  usdcCents,
-  type Bill,
-} from '../cajero/cash'
+import { errorMessages } from '../cajero/phases'
+import { ProcessingScreen, QuoteScreen, Receipt } from '../cajero/Proceso'
 import { validDocument, validName, validPhone } from '../cajero/validate'
-import type { Customer } from '../api'
 
-type Step = 'idle' | 'telefono' | 'nombre' | 'documento' | 'direccion' | 'billetes' | 'cotizacion'
+type Step =
+  | 'idle'
+  | 'fuera'
+  | 'telefono'
+  | 'nombre'
+  | 'documento'
+  | 'direccion'
+  | 'billetes'
+  | 'cotizacion'
+  | 'procesando'
+  | 'recibo'
+  | 'devolucion'
+  | 'error'
 
 const EMPTY_CUSTOMER: Customer = { phone: '', fullName: '', documentNumber: '' }
+const GRANT_POLL_MS = 5000
+
+const codeOf = (e: unknown): ApiErrorCode => (e instanceof ApiError ? e.code : 'backend_down')
 
 export function Cajero() {
   const [step, setStep] = useState<Step>('idle')
@@ -28,13 +34,43 @@ export function Cajero() {
   const [bills, setBills] = useState<Bill[]>([])
   const [lastInserted, setLastInserted] = useState<{ bill: Bill; seq: number } | null>(null)
   const [copPerUsdc, setCopPerUsdc] = useState<number | null>(null)
+  const [cashIn, setCashIn] = useState<CashIn | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<ApiErrorCode | null>(null)
+  const [offline, setOffline] = useState(false)
 
   useEffect(() => {
+    if (copPerUsdc !== null || (step !== 'idle' && step !== 'billetes')) return
     api.rate().then(
       (r) => setCopPerUsdc(Number(r.copPerUsdc)),
       () => setCopPerUsdc(null),
     )
-  }, [])
+  }, [step, copPerUsdc])
+
+  // Out of service while the store has no active daily grant.
+  useEffect(() => {
+    if (step !== 'idle' && step !== 'fuera') return
+    let live = true
+    const check = () =>
+      api.grant().then(
+        (g) => {
+          if (!live) return
+          setOffline(false)
+          setStep(g.status === 'active' ? 'idle' : 'fuera')
+        },
+        () => {
+          if (!live) return
+          setOffline(true)
+          setStep('fuera')
+        },
+      )
+    check()
+    const t = setInterval(check, GRANT_POLL_MS)
+    return () => {
+      live = false
+      clearInterval(t)
+    }
+  }, [step])
 
   const canInsert = (bill: Bill) =>
     step === 'billetes' && copPerUsdc !== null && remaining(bills, bill) > 0 && fits(bills, bill, copPerUsdc)
@@ -50,15 +86,49 @@ export function Cajero() {
     setAddress('')
     setBills([])
     setLastInserted(null)
+    setCashIn(null)
+    setError(null)
     setStep('idle')
   }
 
-  const cop = total(bills)
-  const cents = copPerUsdc ? usdcCents(cop, copPerUsdc) : 0
+  const fail = (code: ApiErrorCode) => {
+    setError(code)
+    setStep('error')
+  }
+
+  const quote = async () => {
+    setStep('cotizacion')
+    setCashIn(null)
+    setBusy(true)
+    try {
+      setCashIn(await api.createCashIn({ copAmount: String(total(bills)), stellarAddress: address, customer }))
+    } catch (e) {
+      fail(codeOf(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirm = async () => {
+    if (!cashIn) return
+    setBusy(true)
+    try {
+      setCashIn(await api.confirmCashIn(cashIn.id))
+      setStep('procesando')
+    } catch (e) {
+      const code = codeOf(e)
+      if (code === 'quote_expired') await quote()
+      else fail(code)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cop = formatCop(total(bills))
 
   return (
     <div className="cajero-layout">
-      <DropZone enabled={step === 'billetes'} lastInserted={lastInserted} onInsert={insert}>
+      <DropZone enabled={step === 'billetes'} lastInserted={step === 'billetes' ? lastInserted : null} onInsert={insert}>
         <div className="atm-screen">
           {step === 'idle' && (
             <>
@@ -68,6 +138,19 @@ export function Cajero() {
               <button type="button" className="atm-btn" onClick={() => setStep('telefono')}>
                 Empezar
               </button>
+            </>
+          )}
+
+          {step === 'fuera' && (
+            <>
+              <p className="atm-kicker">Fuera de servicio</p>
+              <h1>{offline ? 'Sin conexión' : 'Cajero sin autorización'}</h1>
+              <p>{offline ? `${errorMessages.backend_down} Reintentando…` : errorMessages.no_grant}</p>
+              {!offline && (
+                <a className="atm-link" href="/tienda">
+                  Ir a la vista de la tienda
+                </a>
+              )}
             </>
           )}
 
@@ -125,70 +208,78 @@ export function Cajero() {
           )}
 
           {step === 'billetes' && (
+            <BillsScreen
+              bills={bills}
+              copPerUsdc={copPerUsdc}
+              onUndo={() => setBills(bills.slice(0, -1))}
+              onCancel={() => (bills.length ? setStep('devolucion') : reset())}
+              onContinue={quote}
+            />
+          )}
+
+          {step === 'cotizacion' && !cashIn && (
             <>
-              <p className="atm-kicker">Paso 5 de 5 · Inserte sus billetes</p>
-              <p className="atm-total" aria-live="polite">
-                {formatCop(cop)} <small>COP</small>
-              </p>
-              <p className="atm-usdc">
-                ≈ {copPerUsdc ? formatUsdc(cents) : '…'} <small>USDC</small>
-              </p>
-              <div
-                className="atm-meter"
-                role="meter"
-                aria-label="Límite por operación"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={cents / 100}
-              >
-                <span style={{ width: `${Math.min(100, (cents / TIER1_TX_USDC_CENTS) * 100)}%` }} />
-              </div>
-              <p className="atm-dim">
-                Límite por operación: 100 USDC ·{' '}
-                {copPerUsdc ? `1 USDC = ${formatCop(copPerUsdc)} (tasa de referencia del operador)` : 'tasa no disponible'}
-              </p>
-              {bills.length > 0 && (
-                <ul className="atm-bills">
-                  {grouped(bills).map((g) => (
-                    <li key={g.bill}>
-                      {g.count} × {formatCop(g.bill)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="atm-actions">
-                <button type="button" className="atm-btn atm-btn-ghost" onClick={reset}>
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="atm-btn atm-btn-ghost"
-                  disabled={bills.length === 0}
-                  onClick={() => setBills(bills.slice(0, -1))}
-                >
-                  Deshacer último
-                </button>
-                <button
-                  type="button"
-                  className="atm-btn"
-                  disabled={bills.length === 0}
-                  onClick={() => setStep('cotizacion')}
-                >
-                  Continuar
-                </button>
-              </div>
+              <p className="atm-kicker">Cotización</p>
+              <p className="atm-total">{cop} COP</p>
+              <p className="atm-dim">Creando la solicitud de pago en Open Payments…</p>
             </>
           )}
 
-          {step === 'cotizacion' && (
+          {step === 'cotizacion' && cashIn && (
+            <QuoteScreen
+              cashIn={cashIn}
+              busy={busy}
+              onConfirm={confirm}
+              onRequote={quote}
+              onCancel={() => setStep('devolucion')}
+            />
+          )}
+
+          {step === 'procesando' && cashIn && (
+            <ProcessingScreen
+              initial={cashIn}
+              onDone={(c) => {
+                setCashIn(c)
+                setStep('recibo')
+              }}
+              onReturnCash={() => setStep('devolucion')}
+            />
+          )}
+
+          {step === 'recibo' && cashIn && <Receipt cashIn={cashIn} onFinish={reset} />}
+
+          {step === 'devolucion' && (
             <>
-              <p className="atm-kicker">Cotización</p>
-              <p className="atm-total">
-                {formatCop(cop)} → {formatUsdc(cents)} USDC
-              </p>
-              <button type="button" className="atm-btn atm-btn-ghost" onClick={reset}>
-                Volver al inicio
+              <p className="atm-kicker">Devolución</p>
+              <h1>Retire sus billetes</h1>
+              <p className="atm-total">{cop} COP</p>
+              <p className="atm-dim">No se hizo ningún pago.</p>
+              <button type="button" className="atm-btn" onClick={reset}>
+                Ya los retiré
               </button>
+            </>
+          )}
+
+          {step === 'error' && error && (
+            <>
+              <p className="atm-kicker">No pudimos continuar</p>
+              <h1>{error === 'backend_down' ? 'Sin conexión' : 'Operación rechazada'}</h1>
+              <p>{errorMessages[error]}</p>
+              <div className="atm-actions">
+                <button type="button" className="atm-btn atm-btn-ghost" onClick={() => setStep('devolucion')}>
+                  Retirar mis billetes
+                </button>
+                {error === 'invalid_address' && (
+                  <button type="button" className="atm-btn" onClick={() => setStep('direccion')}>
+                    Corregir dirección
+                  </button>
+                )}
+                {(error === 'backend_down' || error === 'insufficient_inventory') && (
+                  <button type="button" className="atm-btn" onClick={quote}>
+                    Reintentar
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>

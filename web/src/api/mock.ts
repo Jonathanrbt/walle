@@ -56,9 +56,11 @@ type Options = {
 
 const STORAGE_KEY = 'walle-mock-api'
 
+/** Shared across tabs so the cashier and operator views can sit side by side; `?reiniciar=1` wipes it. */
 function browserStorage() {
   try {
-    return sessionStorage
+    if (new URLSearchParams(location.search).has('reiniciar')) localStorage.removeItem(STORAGE_KEY)
+    return localStorage
   } catch {
     return null
   }
