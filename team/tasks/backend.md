@@ -108,11 +108,11 @@ Cada tarea: rama `feat/jonatin-backend`, prueba primero, verificación con los c
   - Acepta: pruebas de propiedades con `fast-check` (sin pérdida en ida y vuelta de escala, nunca se entrega más USDC que el cotizado, solo transiciones de la tabla); cobertura ≥ 90 % en `domain/`.
 - [x] **B3 Persistencia SQLite**: migraciones, repositorios de `CashIn`, `StoreGrant`, uso de límites por documento e inventario; transacciones y conflicto de `version` como error tipado. Doble en memoria que pasa la misma suite.
   - Acepta: la suite de contrato del repositorio corre contra SQLite real (archivo temporal) y contra el doble; reabrir la base conserva los datos.
-- [ ] **B4 Precio**: puerto `RateProvider` con adaptador de tasa de referencia configurada + spread; `GET /api/rate`.
+- [x] **B4 Precio**: puerto `RateProvider` con adaptador de tasa de referencia configurada + spread; `GET /api/rate`.
   - Acepta: prueba HTTP que valida la respuesta con el esquema de B1; `copPerUsdc` incluye el spread.
 - [x] **B5 Adaptador de Open Payments**: clientes autenticados de tienda y operador, `incoming payment` (operador), `quote` (tienda), `outgoing payment` con token, lectura de estados. Primero un sondeo en testnet que confirme `assetScale` de COP y la comisión en COP → moneda del operador.
   - Acepta: suite de contrato del puerto `PaymentsNetwork` en verde contra el doble y contra testnet (`TESTNET=1`); errores del SDK mapeados a errores de dominio.
-- [ ] **B6 `grant` diario de la tienda**: `GET /api/grant/start` (GNAP interactivo, `interval` R/…/P1D, `debitAmount` diario, `nonce` guardado), `GET /api/grant/finish` (verifica `hash`, `grant.continue`, guarda token + `manage`, redirige a `WEB_BASE_URL/tienda?grant=ok|error`), `GET /api/grant` (estado, `spentCop` desde el libro propio), rotación de token serializada (antes de vencer o ante 401).
+- [x] **B6 `grant` diario de la tienda**: `GET /api/grant/start` (GNAP interactivo, `interval` R/…/P1D, `debitAmount` diario, `nonce` guardado), `GET /api/grant/finish` (verifica `hash`, `grant.continue`, guarda token + `manage`, redirige a `WEB_BASE_URL/tienda?grant=ok|error`), `GET /api/grant` (estado, `spentCop` desde el libro propio), rotación de token serializada (antes de vencer o ante 401).
   - Acepta: vectores de prueba del `hash`; rotación con el doble (dos pagos, un consentimiento); consentimiento real en testnet registrado como evidencia.
 - [ ] **B7 Crear ingreso de efectivo**: `POST /api/cash-ins`: valida la dirección (StrKey + cuenta existente con `trustline` de USDC), límites del nivel 1, `grant` vigente con cupo, inventario (reserva), crea `incoming payment` + `quote`, guarda `quoted`.
   - Acepta: pruebas HTTP para el camino feliz y cada código (`limit_exceeded`, `no_grant`, `grant_exhausted`, `invalid_address`, `insufficient_inventory`) con dobles + SQLite real.
@@ -145,6 +145,13 @@ Prompt para iniciar o retomar el bucle (por ejemplo con `/loop`):
 > Lee `team/tasks/backend.md`, `CLAUDE.md` y `team/contracts.md`. Toma la primera tarea `B*` sin marcar cuyas anteriores estén marcadas. Delega UN implementador (`gentle-ai-cursor run implementer -C <raíz del repo> --timeout 1800 "<prompt>"`) con: la tarea completa, `## Allowed edit surfaces` = las rutas de la tarea dentro de `server/**` / `packages/contracts/**` (más los archivos compartidos que la tarea nombre), la skill `open-payments` cuando toque Open Payments, prueba primero y los comandos de «Acepta». Cuando vuelva, ejecuta tú uno de los comandos de verificación. Si todo está en verde: commit de unidad de trabajo en `feat/jonatin-backend` (conventional commit con emoji, sin atribución de IA), evalúa el commit con `gentle-ai review assess --cwd <raíz> --agent claude-code --base-ref <último límite revisado> --committed-only --json` y, si `review_due` es verdadero, sigue la revisión nativa (RDD); marca la tarea, escribe la evidencia, el riesgo evaluado y el progreso aquí. Si falla algo, o hace falta una decisión humana (credenciales, consentimiento en el navegador, cambio de contrato), detente y pregunta. Nunca hagas push sin permiso.
 
 Entrega: PRs encadenados a `main` cada 2–3 tareas (≈400 líneas por PR): B0–B1, B2–B3, B4–B5, B6–B7, B8–B9, B10–B12.
+
+## Hallazgos de revisión pendientes para B12
+Aprobados con advertencias (no bloquean; se atienden en el endurecimiento):
+- B5: `R3-invalidate-by-key` (la invalidación de la caché de grants tras un 401 debe usar la clave correcta) y nombres de `payments-network.ts:17,48-54`.
+- B4+B6: `R1-unauth-grant-start` (`GET /api/grant/start` no tiene autenticación; el contrato lo define así y es testnet: decidir si se protege con un token de operador), `R4-mutex-held-over-network` (el mutex del servicio de grant se mantiene durante la llamada de rotación a la red: acotar con un tiempo límite), `R3-invalid-amount-status` (`invalid_amount` de dominio → 400 vs 500 según el origen), `R2-004` (migración 002 con valor por defecto vacío), `R2-001`, `R2-002`, `R2-003`, `R3-token-mutex-scope`.
+- B8: `R3-prepare-dest-validation`, `R3-receive-liabilities`.
+- B3: `R3-insert-nonpk-conflict`, `R3-listbystatus-unprepared`.
 
 ## Decisiones fijadas por la sonda (2026-10-17)
 - El `incoming payment` del operador va en USD (escala 2), sin `incomingAmount`; el `quote` de la tienda usa `debitAmount` = efectivo en COP. La verdad de la liquidación es `quote.receiveAmount`.
