@@ -21,6 +21,11 @@ import { AppError } from './errors.ts'
 
 const WEB = 'http://localhost:5173'
 
+const unusedCashIns = {
+  create: () => Promise.reject(new Error('unused')),
+  get: () => Promise.reject(new Error('unused')),
+}
+
 function finishHash(input: {
   readonly nonce: string
   readonly interactNonce: string
@@ -47,7 +52,14 @@ function graph() {
     publicBaseUrl: 'http://localhost:3000',
   })
   const rate = new ConfiguredRateProvider({ referenceCopPerUsd: '3177', spreadPct: '3' }, clock)
-  const app = buildApp({ logger: false, rate, storeGrant, webBaseUrl: WEB, clock })
+  const app = buildApp({
+    logger: false,
+    rate,
+    storeGrant,
+    cashIns: unusedCashIns,
+    webBaseUrl: WEB,
+    clock,
+  })
   return { app, clock, grants, storeGrant }
 }
 
@@ -204,6 +216,7 @@ describe('HTTP error handler', () => {
       logger,
       rate,
       storeGrant,
+      cashIns: unusedCashIns,
       webBaseUrl: WEB,
     })
   }
@@ -348,6 +361,7 @@ describe('HTTP error handler', () => {
     const app = buildApp({
       logger: false,
       rate,
+      cashIns: unusedCashIns,
       webBaseUrl: WEB,
       storeGrant: {
         start: () => Promise.reject(new Error('unused')),

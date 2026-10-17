@@ -11,6 +11,7 @@ import type { RateProvider } from '../../pricing/rate-provider.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
 import { installErrorHandler } from './errors.ts'
 import { loggerOptions, type LoggerOptions } from './logger.ts'
+import { registerCashInRoutes, type CashInRoutes } from './routes/cash-ins.ts'
 import { registerGrantRoutes } from './routes/grant.ts'
 import { registerRateRoutes } from './routes/rate.ts'
 
@@ -24,6 +25,7 @@ export interface BuildAppDeps {
   logger?: false | LoggerOptions
   rate: RateProvider
   storeGrant: Pick<StoreGrantService, 'start' | 'finish' | 'status'>
+  cashIns: CashInRoutes
   webBaseUrl: string
   clock?: Clock
 }
@@ -51,6 +53,7 @@ export function buildApp(deps: BuildAppDeps) {
 
   registerRateRoutes(app, deps.rate)
   registerGrantRoutes(app, { storeGrant: deps.storeGrant, webBaseUrl: deps.webBaseUrl, clock })
+  registerCashInRoutes(app, deps.cashIns)
 
   return app
 }

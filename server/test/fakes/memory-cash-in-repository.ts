@@ -1,5 +1,5 @@
 import type { CashIn, CashInStatus } from '../../src/cash-in/domain/cash-in.ts'
-import type { CashInRepository, CashInUsage } from '../../src/cash-in/repository.ts'
+import type { CashInRepository, CashInUsage, IdempotencyHit } from '../../src/cash-in/repository.ts'
 import { DomainError } from '../../src/shared/errors.ts'
 import { money, type Money } from '../../src/shared/money.ts'
 
@@ -9,15 +9,26 @@ export interface MemoryCashInRepository extends CashInRepository {
 
 export function createMemoryCashInRepository(): MemoryCashInRepository {
   const rows = new Map<string, CashIn>()
+  const idempotency = new Map<string, { readonly id: string; readonly body: string }>()
 
   return {
-    insert(cashIn) {
+    insert(cashIn, record) {
       return runPort(() => {
+        if (record !== undefined && idempotency.has(record.key)) {
+          throw new DomainError('version_conflict', 'version conflict')
+        }
         if (rows.has(cashIn.id)) {
           throw new DomainError('version_conflict', 'version conflict')
         }
         rows.set(cashIn.id, structuredClone(cashIn))
+        if (record !== undefined) {
+          idempotency.set(record.key, { id: cashIn.id, body: record.body })
+        }
       })
+    },
+
+    findIdempotency(key) {
+      return runPort(() => findIdempotency(rows, idempotency, key))
     },
 
     get(id) {
@@ -70,6 +81,18 @@ export function createMemoryCashInRepository(): MemoryCashInRepository {
 
 function cloneRow(row: CashIn | undefined): CashIn | undefined {
   return row === undefined ? undefined : structuredClone(row)
+}
+
+function findIdempotency(
+  rows: ReadonlyMap<string, CashIn>,
+  keys: ReadonlyMap<string, { readonly id: string; readonly body: string }>,
+  key: string,
+): IdempotencyHit | undefined {
+  const record = keys.get(key)
+  if (record === undefined) return undefined
+  const cashIn = rows.get(record.id)
+  if (cashIn === undefined) return undefined
+  return { cashIn: structuredClone(cashIn), body: record.body }
 }
 
 function usageFor(

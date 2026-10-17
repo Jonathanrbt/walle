@@ -445,6 +445,24 @@ export function runCashInRepositoryContract(
       })
     })
 
+    it('stores an idempotency key and rejects a second insert with that key', async () => {
+      await withRepo(makeSubject, async (repo) => {
+        const first = fixture({ id: 'idem-1' })
+        await repo.insert(first, { key: 'key-1', body: '{"copAmount":"10.00"}' })
+        expect(await repo.findIdempotency('key-1')).toEqual({
+          cashIn: first,
+          body: '{"copAmount":"10.00"}',
+        })
+        await expect(
+          repo.insert(fixture({ id: 'idem-2' }), { key: 'key-1', body: '{"copAmount":"99.00"}' }),
+        ).rejects.toMatchObject({ code: 'version_conflict' })
+        expect(await repo.get('idem-2')).toBeUndefined()
+        expect(await repo.findIdempotency('missing')).toBeUndefined()
+        await repo.insert(fixture({ id: 'plain' }))
+        expect((await repo.get('plain'))?.id).toBe('plain')
+      })
+    })
+
     it('reloads every valid transition sequence equal to the in-memory cash-in', async () => {
       await fc.assert(
         fc.asyncProperty(

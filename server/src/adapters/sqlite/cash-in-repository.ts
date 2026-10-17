@@ -1,8 +1,13 @@
 import type { DatabaseSync, SQLInputValue, StatementSync } from 'node:sqlite'
 import type { CashIn, CashInOpenPayments, CashInStatus } from '../../cash-in/domain/cash-in.ts'
-import type { CashInRepository, CashInUsage } from '../../cash-in/repository.ts'
+import type {
+  CashInRepository,
+  CashInUsage,
+  IdempotencyHit,
+  IdempotencyRecord,
+} from '../../cash-in/repository.ts'
 import { money, type Money } from '../../shared/money.ts'
-import { changed, conflict, runPort, versionConflict } from './constraints.ts'
+import { changed, conflict, isUniqueConstraint, runPort, versionConflict } from './constraints.ts'
 
 const COLUMNS = [
   'id',
@@ -36,7 +41,7 @@ const COLUMNS = [
 
 const UPDATE_COLUMNS = COLUMNS.filter((column) => column !== 'id')
 
-const INSERT_SQL = `INSERT INTO cash_ins (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})`
+const INSERT_SQL = `INSERT INTO cash_ins (${COLUMNS.join(', ')}, idempotency_key, idempotency_body) VALUES (${COLUMNS.map(() => '?').join(', ')}, ?, ?)`
 
 const UPDATE_SQL = `UPDATE cash_ins SET ${UPDATE_COLUMNS.map((column) => `${column} = ?`).join(', ')} WHERE id = ? AND version = ?`
 
@@ -96,6 +101,10 @@ interface AmountRow {
   readonly amount: bigint
 }
 
+interface IdempotencyRow {
+  readonly idempotency_body: string | null
+}
+
 export class SqliteCashInRepository implements CashInRepository {
   readonly #db: DatabaseSync
   readonly #insert: StatementSync
@@ -104,6 +113,7 @@ export class SqliteCashInRepository implements CashInRepository {
   readonly #recent: StatementSync
   readonly #usage: StatementSync
   readonly #reserved: StatementSync
+  readonly #idempotency: StatementSync
 
   constructor(db: DatabaseSync) {
     this.#db = db
@@ -113,15 +123,25 @@ export class SqliteCashInRepository implements CashInRepository {
     this.#recent = db.prepare('SELECT * FROM cash_ins ORDER BY created_at DESC, id DESC LIMIT ?')
     this.#usage = db.prepare(USAGE_SQL)
     this.#reserved = db.prepare(RESERVED_SQL)
+    this.#idempotency = db.prepare('SELECT * FROM cash_ins WHERE idempotency_key = ?')
   }
 
-  insert(cashIn: CashIn): Promise<void> {
+  insert(cashIn: CashIn, idempotency?: IdempotencyRecord): Promise<void> {
     return runPort(() => {
       try {
-        this.#insert.run(...bindings(cashIn))
+        this.#insert.run(...bindings(cashIn), idempotency?.key ?? null, idempotency?.body ?? null)
       } catch (error) {
+        if (isUniqueConstraint(error)) conflict()
         versionConflict(error)
       }
+    })
+  }
+
+  findIdempotency(key: string): Promise<IdempotencyHit | undefined> {
+    return runPort(() => {
+      const row = this.#idempotency.get(key) as (CashInRow & IdempotencyRow) | undefined
+      if (row === undefined) return undefined
+      return { cashIn: mapCashIn(row), body: row.idempotency_body ?? '' }
     })
   }
 
