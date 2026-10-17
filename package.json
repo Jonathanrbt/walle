@@ -6,6 +6,8 @@
     "packages/*"
   ],
   "scripts": {
+    "dev:all": "node server/scripts/dev-all.mjs",
+    "dev:server": "npm run -w server dev",
     "test": "npm run -w server test",
     "typecheck": "npm run -w server typecheck",
     "lint": "npm run -w server lint"
