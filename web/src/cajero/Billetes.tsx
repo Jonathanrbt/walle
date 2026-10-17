@@ -10,19 +10,10 @@ import {
   usdcCents,
   type Bill,
 } from './cash'
+import { Banknote } from './Banknote'
 import './billetes.css'
 
 const DRAG_TYPE = 'text/plain'
-
-export function BillNote({ bill }: { bill: Bill }) {
-  return (
-    <span className={`bill bill-${bill}`}>
-      <span className="bill-corner">{bill / 1000}</span>
-      <span className="bill-value">{formatCop(bill)}</span>
-      <span className="bill-country">Colombia</span>
-    </span>
-  )
-}
 
 /** Customer's interactive wallet: drag a bill to the cashier or press it to insert. */
 export function Wallet({
@@ -57,7 +48,7 @@ export function Wallet({
                 aria-label={`Insertar billete de ${formatCop(bill)}, quedan ${left}`}
                 title={left > 0 && !allowed ? 'Supera el límite de 100 USDC por operación' : undefined}
               >
-                <BillNote bill={bill} />
+                <Banknote bill={bill} />
                 <span className="wallet-count">×{left}</span>
               </button>
             </li>
@@ -107,7 +98,7 @@ export function DropZone({
       <div className={`atm-slot${enabled ? ' atm-slot-ready' : ''}`}>
         {lastInserted && (
           <span key={lastInserted.seq} className="slot-feed" aria-hidden="true">
-            <BillNote bill={lastInserted.bill} />
+            <Banknote bill={lastInserted.bill} />
           </span>
         )}
       </div>

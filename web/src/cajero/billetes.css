@@ -1,31 +1,5 @@
-/* Stylized notes, not replicas: denomination tint only. */
-.bill {
-  --tint: #888;
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 132px;
-  height: 62px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background:
-    radial-gradient(circle at 78% 50%, #ffffff40 0 16px, transparent 17px),
-    linear-gradient(135deg, var(--tint), color-mix(in srgb, var(--tint) 60%, #000));
-  color: #fff;
-  font-family: var(--font-ui);
-  text-shadow: 0 1px 1px #0006;
-  box-shadow: 0 2px 6px #0007, inset 0 0 0 2px #ffffff30;
-}
-.bill-2000 { --tint: #2f8fb0; }
-.bill-5000 { --tint: #b5803a; }
-.bill-10000 { --tint: #c2434a; }
-.bill-20000 { --tint: #d9772b; }
-.bill-50000 { --tint: #8b4fa6; }
-.bill-100000 { --tint: #3d9a5f; }
-.bill-corner { font-weight: 800; font-size: 0.85rem; }
-.bill-value { font-weight: 800; font-size: 1.05rem; }
-.bill-country { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.85; }
+.bn { display: block; height: auto; filter: drop-shadow(0 1px 1px #0003); }
+.bn-text { font-family: var(--font-ui); }
 
 .wallet {
   flex: 0 1 320px;
@@ -50,7 +24,7 @@
 .wallet-bill:active:not(:disabled) { cursor: grabbing; }
 .wallet-bill:disabled { cursor: not-allowed; filter: grayscale(0.9); opacity: 0.4; }
 .wallet-bill:focus-visible { outline: 3px solid var(--cop); outline-offset: 3px; border-radius: 6px; }
-.wallet-bill .bill { width: 100%; }
+.slot-feed .bn { width: 150px; }
 .wallet-count {
   position: absolute;
   top: -6px;
