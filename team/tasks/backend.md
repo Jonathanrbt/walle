@@ -1,6 +1,6 @@
 ---
 owner: jonatin
-status: in-progress
+status: review
 branch: feat/jonatin-backend
 paths:
   - server/**
@@ -124,7 +124,7 @@ Cada tarea: rama `feat/jonatin-backend`, prueba primero, verificación con los c
   - Acepta: pruebas HTTP con esquemas de B1; un ingreso completado aparece primero y descuenta el inventario.
 - [x] **B11 Punta a punta en testnet**: prueba que crea, confirma y completa un ingreso real con el `grant` del día; luego `web/` con `VITE_API_MOCK=0` (coordinar con W10 de `andss-ye`).
   - Acepta: hash de Stellar + id del `outgoing payment` + captura de Freighter en la evidencia.
-- [ ] **B12 Endurecimiento y documentación**: límite de peticiones, manejador de errores uniforme, apagado ordenado (drena el procesador), auditoría de logs sin PII, Stryker sobre `domain/` (umbral acordado en la evidencia), `server/README.md`, `PROJECT.md` (Tecnología y arquitectura + columna «Dónde» del flujo de Open Payments).
+- [~] **B12 Endurecimiento y documentación**: límite de peticiones, manejador de errores uniforme, apagado ordenado (drena el procesador), auditoría de logs sin PII, Stryker sobre `domain/` (umbral acordado en la evidencia), `server/README.md`, `PROJECT.md` (Tecnología y arquitectura + columna «Dónde» del flujo de Open Payments).
   - Acepta: `npm test` completo en verde; puntaje de mutación registrado; ningún secreto en `git grep` con los valores de `.env`.
 
 ## Fase 2: conectar `web/` con el backend real
@@ -180,6 +180,7 @@ Aprobados con advertencias (no bloquean; se atienden en el endurecimiento):
 - B11 (2026-10-17, commit `bde0315`): recorrido REAL en testnet de punta a punta, sin dobles: `grant` diario aprobado por el dueño (limit consentido 2.000.000 COP; el backend aplica su tope de 500.000), cotización COP→USD con las billeteras reales (20.000 COP → 6,11 USDC a 3272,31), `confirm` → `outgoing payment` real → incoming completado → USDC enviado: estados `settling` (+9,9 s) → `settled` (+16,0 s) → `sending_usdc` (+18,0 s) → `completed` (+27,0 s). Verificado en Horizon: transacción `6aedf0969c4e6734fbd5cc4b61fd98ae21777f9638a26fda472b06366a0f758d`, exitosa, ledger 5242133, `memo` WALLE-E2F38489, pago de 6,1100000 USDC (emisor GBBD47…) a la dirección Freighter del cliente; inventario del operador 17,60 → 11,49. El primer intento reveló un defecto real (un POST sin cuerpo con content-type JSON respondía 500): corregido con prueba en `bde0315`. El `grant` sobrevivió a dos reinicios del servidor.
 - F1/F2 (2026-10-17, commits `1f049b6`, `a0918de`): los tipos del front y los esquemas del contrato son idénticos (pruebas `expectTypeOf` y de listas de estados y códigos) y el simulador del front produce respuestas que pasan los esquemas; `npm run dev:all` levanta backend y front juntos; `npm run -w server e2e:testnet` hace el recorrido real con evidencia.
 - F3 parcial (2026-10-17, sin navegador): con `VITE_API_MOCK=0` el proxy de Vite del front llega al backend real (`/api/rate`, `/api/grant`, `/api/operator/inventory` reales) y el cliente HTTP exacto de la interfaz (`web/src/api/http.ts`, cargado con Vite) completó un ingreso real: `quoted` → `settling` → `settled` → `sending_usdc` → `completed` (hash 11b0377539b36fc45d5fe10ee035cc14d7b858cf01fbe407f174caa94373a476), con los errores `invalid_request`, `limit_exceeded` y `not_found` decodificados como espera la UI. La reposición real (`POST /api/operator/inventory/refill`, `path payment` XLM → USDC) llevó el inventario de 5,38 a 1.000 USDC. Falta el recorrido visual en navegador con Freighter (lo hace una persona).
+- B12 (parcial, 2026-10-17): hecho: revisiones nativas aprobadas en cada unidad con todas las advertencias de seguridad cerradas (H1–H4 y las correcciones de `c1526a8`, `bde0315`, `4effadc`), token de operador opcional, registro sin parámetros secretos en la URL, documentación (`server/README.md`, `PROJECT.md`); escaneo de secretos: 0 coincidencias de valores de `.env` en 232 archivos versionados ni en el historial, sin `.env` ni bases de datos versionadas. NO hecho: pruebas de mutación con Stryker — el ejecutor de Stryker 10 no es compatible con Vitest 5 (omite las pruebas filtradas) y la única salida era parchear `node_modules`, lo que no es reproducible; descartado. Límite de peticiones (rate limit) tampoco se implementó.
 - B1 (2026-10-17, commit `08f287b`): ROJO (módulo inexistente), VERDE 80 pruebas del paquete + 17 del servidor, `typecheck`, `lint` y Prettier en verde; revisión nativa aprobada sin hallazgos.
 - B0 (2026-10-17, commit `fee2141`): ROJO observado (2 archivos sin módulo); VERDE: `typecheck`, `lint`, `format:check` y `vitest` 17/17; `node src/main.ts` arranca con la eliminación nativa de tipos y `/healthz` responde 200; `node:sqlite` importa en Node 24.5 (aviso de API experimental); el `.env` real carga (ajuste: las direcciones de billetera aceptan `$host/ruta`, `host/ruta` o URL completa); 13 pruebas de `scripts/` en verde; 0 valores de `.env` en el diff. Riesgo evaluado: medio, revisión nativa concedida y aprobada con 3 hallazgos informativos (validación del archivo de llave, cobertura de ramas de `loadConfig`, comodines de `redact`), pendientes para B12. Versiones fijadas: fastify 5.12.5, zod 4.6.5, fastify-type-provider-zod 7.0.0, typescript 6.0.3, vitest 5.0.3, eslint 10.12.0, typescript-eslint 8.71.0, prettier 3.9.9, fast-check 4.10.2.
 
@@ -189,4 +190,6 @@ Aprobados con advertencias (no bloquean; se atienden en el endurecimiento):
 2026-10-17: credenciales listas en `.env` (billetera USD del operador, cuenta Stellar del operador fondeada con friendbot). Se mantiene el plan completo B0–B12. Reclamo en `in-progress`.
 
 ## Siguiente paso
-Tanda 1: B1 + B2 + sonda de testnet (paralelo); luego B3, B5, B8.
+1. Recorrido visual en navegador con Freighter (persona) con `npm run dev:all`.
+2. Push de `feat/jonatin-backend`, PR a `main` y cierre de W10 con `andss-ye` (F4).
+3. Antes del sáb 11:00: `AI_USAGE.md` y revisión de `prompts/` por cada persona (README).
