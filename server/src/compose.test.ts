@@ -2,10 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Grant, Rate } from '@walle/contracts'
+import { Grant, Inventory, Rate } from '@walle/contracts'
 import { describe, expect, it } from 'vitest'
 
 import { FakeGrantGateway, ManualClock } from '../test/fakes/fake-grant-gateway.ts'
+import { FakeUsdcNetwork } from '../test/fakes/fake-usdc-network.ts'
+import { money } from './shared/money.ts'
 import { composeApp } from './compose.ts'
 import type { Config } from './config.ts'
 
@@ -57,6 +59,26 @@ describe('composeApp', () => {
     } finally {
       await runtime.close()
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('serves the operator inventory through an overridden USDC network', async () => {
+    const usdc = new FakeUsdcNetwork()
+    await usdc.ensureOperatorReady()
+    usdc.creditOperator(money(2_500_000_000n, 'USDC', 7))
+    const runtime = composeApp(config(':memory:'), { logger: false, usdc })
+    try {
+      const response = await runtime.app.inject({ method: 'GET', url: '/api/operator/inventory' })
+      expect(response.statusCode).toBe(200)
+      expect(Inventory.parse(response.json())).toEqual({
+        usdc: '250.00',
+        floatUsdc: '1000.00',
+        lowThresholdPct: 30,
+      })
+      const list = await runtime.app.inject({ method: 'GET', url: '/api/operator/cash-ins' })
+      expect(list.json()).toEqual([])
+    } finally {
+      await runtime.close()
     }
   })
 

@@ -18,6 +18,7 @@ import { createMemoryCashInRepository } from '../../../test/fakes/memory-cash-in
 import { createMemoryStoreGrantRepository } from '../../../test/fakes/memory-store-grant-repository.ts'
 import { buildApp } from './app.ts'
 import { AppError } from './errors.ts'
+import { unusedOperator } from '../../../test/fakes/unused-operator.ts'
 
 const WEB = 'http://localhost:5173'
 
@@ -57,6 +58,7 @@ function graph() {
     rate,
     storeGrant,
     cashIns: unusedCashIns,
+    operator: unusedOperator,
     webBaseUrl: WEB,
     clock,
   })
@@ -217,6 +219,7 @@ describe('HTTP error handler', () => {
       rate,
       storeGrant,
       cashIns: unusedCashIns,
+      operator: unusedOperator,
       webBaseUrl: WEB,
     })
   }
@@ -362,6 +365,7 @@ describe('HTTP error handler', () => {
       logger: false,
       rate,
       cashIns: unusedCashIns,
+      operator: unusedOperator,
       webBaseUrl: WEB,
       storeGrant: {
         start: () => Promise.reject(new Error('unused')),

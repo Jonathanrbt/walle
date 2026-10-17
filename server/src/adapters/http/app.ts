@@ -8,11 +8,13 @@ import { z } from 'zod'
 
 import type { Clock } from '../../shared/ports.ts'
 import type { RateProvider } from '../../pricing/rate-provider.ts'
+import type { OperatorService } from '../../treasury/application/operator-service.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
 import { installErrorHandler } from './errors.ts'
 import { loggerOptions, type LoggerOptions } from './logger.ts'
 import { registerCashInRoutes, type CashInRoutes } from './routes/cash-ins.ts'
 import { registerGrantRoutes } from './routes/grant.ts'
+import { registerOperatorRoutes } from './routes/operator.ts'
 import { registerRateRoutes } from './routes/rate.ts'
 
 const healthResponse = z.object({
@@ -26,6 +28,7 @@ export interface BuildAppDeps {
   rate: RateProvider
   storeGrant: Pick<StoreGrantService, 'start' | 'finish' | 'status'>
   cashIns: CashInRoutes
+  operator: OperatorService
   webBaseUrl: string
   clock?: Clock
 }
@@ -54,6 +57,7 @@ export function buildApp(deps: BuildAppDeps) {
   registerRateRoutes(app, deps.rate)
   registerGrantRoutes(app, { storeGrant: deps.storeGrant, webBaseUrl: deps.webBaseUrl, clock })
   registerCashInRoutes(app, deps.cashIns)
+  registerOperatorRoutes(app, { operator: deps.operator })
 
   return app
 }

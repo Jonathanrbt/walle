@@ -4,6 +4,7 @@ import { money } from '../../shared/money.ts'
 import type { RateProvider } from '../../pricing/rate-provider.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
 import { buildApp } from './app.ts'
+import { unusedOperator } from '../../../test/fakes/unused-operator.ts'
 
 const rate: RateProvider = {
   current: () =>
@@ -31,6 +32,7 @@ function build() {
     rate,
     storeGrant,
     cashIns,
+    operator: unusedOperator,
     webBaseUrl: 'http://localhost:5173',
   })
 }

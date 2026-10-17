@@ -22,7 +22,11 @@ import type { Clock, IdGenerator } from './shared/ports.ts'
 import type { GrantGateway } from './store-grant/gateway.ts'
 import type { StoreGrantRepository } from './store-grant/repository.ts'
 import { StoreGrantService } from './store-grant/application/store-grant-service.ts'
+import { createOperatorService } from './treasury/application/operator-service.ts'
 import type { UsdcNetwork } from './treasury/usdc-network.ts'
+
+/** Below this share of the float the operator view warns that a refill is due. */
+const LOW_THRESHOLD_PCT = 30
 
 export interface ComposeOverrides {
   readonly rate?: RateProvider
@@ -85,11 +89,20 @@ export function composeApp(config: Config, overrides: ComposeOverrides = {}): Ap
     mutex,
   })
   const getCashIn = new GetCashIn({ cashIns, clock })
+  const operator = createOperatorService({
+    cashIns,
+    usdcNetwork: usdc,
+    clock,
+    mutex: new Mutex(),
+    usdcFloat: config.business.usdcFloat,
+    lowThresholdPct: LOW_THRESHOLD_PCT,
+  })
   const logger = loggerFor(config, overrides.logger)
   const app = buildApp({
     logger,
     rate,
     storeGrant,
+    operator,
     cashIns: {
       create: (input) => createCashIn.create(input),
       get: (id) => getCashIn.get(id),
