@@ -1,0 +1,5 @@
+#!/bin/sh
+# Block commits of unreviewed prompts or staged AI files that still contain secrets.
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+exec node scripts/prompts/cli.mjs check-staged
