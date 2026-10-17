@@ -55,7 +55,7 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
 ```
 
 ## Tareas
-- [ ] **W1 Base de `web/`**: Vite + React + TS, proxy `/api` en desarrollo, `VITE_API_MOCK`, rutas `/`, `/tienda` y `/operador` sin librería de router, layout y tokens de color del cajero.
+- [x] **W1 Base de `web/`**: Vite + React + TS, proxy `/api` en desarrollo, `VITE_API_MOCK`, rutas `/`, `/tienda` y `/operador` sin librería de router, layout y tokens de color del cajero.
   - Acepta: `npm run dev` en `web/` sirve las 3 vistas; `npm run build` y `npm test` en verde.
 - [ ] **W2 Cliente de API + simulación**: tipos de `team/contracts.md`, cliente `fetch` real y doble simulado con latencias y estados reales (incluidos los fallos forzables por `?fallo=stellar|grant|limite`).
   - Acepta: tests de la máquina de estados simulada (`quoted → settling → settled → sending_usdc → completed` y la rama `failed_stellar` → reintentar).
@@ -77,10 +77,11 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
   - Acepta: un ingreso de efectivo de punta a punta en testnet visto en Freighter (evidencia: hash + captura).
 
 ## Evidencia
-_Sin evidencia todavía._
+- W1 (2026-10-16): `npm test` 1/1 en verde; `npm run build` en verde (221 kB JS); servidor de desarrollo: `/`, `/tienda`, `/operador` renderizan, navegación interna y botón atrás funcionan, sin errores de consola, sin scroll horizontal a 375 px; `/api/rate` llega al proxy (502 sin backend).
 
 ## Progreso
 2026-10-16: reclamo creado; contratos propuestos en `team/contracts.md` (pendientes de acuerdo con quien haga el backend).
+2026-10-16: W1 listo. Vite 8 + React 19 + TS 5.9 + Vitest 5; fuentes del sistema para que la demo funcione sin red; navegación con `history.pushState` para que el estado simulado sobreviva al cambiar de vista.
 
 ## Siguiente paso
-W1 en la rama `feat/andss-ye-web-cajero`.
+W2: cliente de API + simulación según `team/contracts.md`.
