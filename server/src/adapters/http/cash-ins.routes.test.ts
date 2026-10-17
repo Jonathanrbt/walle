@@ -273,6 +273,7 @@ describe('POST /api/cash-ins and GET /api/cash-ins/:id', () => {
         receive: money(1n, 'USD', 2),
       }),
       createOutgoingPayment: (input) => underpaid.createOutgoingPayment(input),
+      findOutgoingPaymentByQuote: (input) => underpaid.findOutgoingPaymentByQuote(input),
       getOutgoingPayment: (id, token) => underpaid.getOutgoingPayment(id, token),
       getIncomingPayment: (url) => underpaid.getIncomingPayment(url),
       completeIncomingPayment: (url) => underpaid.completeIncomingPayment(url),

@@ -21,6 +21,7 @@ interface QuoteRecord {
 }
 
 interface OutgoingRecord {
+  quoteId: string
   debit: Money
   sent: Money
   failed: boolean
@@ -38,6 +39,8 @@ export class FakePaymentsNetwork implements PaymentsNetwork {
   #sequence = 0
   #quoteError: PaymentsNetworkError | undefined
   #outgoingError: PaymentsNetworkError | undefined
+  #findError: PaymentsNetworkError | undefined
+  #completeError: PaymentsNetworkError | undefined
   readonly #incoming = new Map<string, IncomingRecord>()
   readonly #quotes = new Map<string, QuoteRecord>()
   readonly #outgoing = new Map<string, OutgoingRecord>()
@@ -58,6 +61,15 @@ export class FakePaymentsNetwork implements PaymentsNetwork {
   failOutgoing(error?: PaymentsNetworkError): void {
     this.#outgoingError =
       error ?? new PaymentsNetworkError('unavailable', 'scripted outgoing failure')
+  }
+
+  failNextFind(error?: PaymentsNetworkError): void {
+    this.#findError = error ?? new PaymentsNetworkError('unavailable', 'scripted list failure')
+  }
+
+  failNextComplete(error?: PaymentsNetworkError): void {
+    this.#completeError =
+      error ?? new PaymentsNetworkError('rejected', 'incoming payment is already completed')
   }
 
   setOutgoingStatus(id: string, status: 'pending' | 'paid' | 'failed'): void {
@@ -143,11 +155,31 @@ export class FakePaymentsNetwork implements PaymentsNetwork {
       }
       const id = this.#next('outgoing-payments')
       this.#outgoing.set(id, {
+        quoteId: input.quoteId,
         debit: quote.debit,
         sent: money(0n, quote.debit.assetCode, quote.debit.assetScale),
         failed: false,
       })
       return { id }
+    })
+  }
+
+  findOutgoingPaymentByQuote(input: {
+    quoteId: string
+    accessToken: string
+  }): Promise<{ id: string } | undefined> {
+    return settle(() => {
+      const scripted = this.#findError
+      this.#findError = undefined
+      if (scripted !== undefined) throw scripted
+      if (input.accessToken.length === 0) {
+        throw new PaymentsNetworkError('unauthorized', 'outgoing payment was refused')
+      }
+      let found: string | undefined
+      for (const [id, payment] of this.#outgoing) {
+        if (payment.quoteId === input.quoteId) found = id
+      }
+      return found === undefined ? undefined : { id: found }
     })
   }
 
@@ -179,6 +211,9 @@ export class FakePaymentsNetwork implements PaymentsNetwork {
 
   completeIncomingPayment(url: string): Promise<void> {
     return settle(() => {
+      const scripted = this.#completeError
+      this.#completeError = undefined
+      if (scripted !== undefined) throw scripted
       this.#requireIncoming(url).completed = true
     })
   }
