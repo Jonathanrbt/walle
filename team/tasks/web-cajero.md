@@ -1,6 +1,6 @@
 ---
 owner: andss-ye
-status: in-progress
+status: review
 branch: feat/andss-ye-web-cajero
 paths:
   - web/**
