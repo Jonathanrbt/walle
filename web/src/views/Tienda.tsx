@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, mockApi, type Grant } from '../api'
 import { formatCop } from '../cajero/cash'
+import { StoreScene } from '../iso/scenes'
 
 const POLL_MS = 3000
 
@@ -76,45 +77,61 @@ export function Tienda() {
 
   return (
     <section className="panel">
-      <p className="kicker">Tienda · punto de efectivo</p>
-      <h1>Autorización diaria de pagos</h1>
-      <p className="dim">
-        Cada ingreso de efectivo se liquida al operador desde la billetera de Open Payments de la tienda. Un solo
-        consentimiento (grant GNAP) cubre todo el día hasta el límite.
-      </p>
+      <div className="panel-grid">
+        <StoreScene active={active} />
+        <div>
+          <p className="kicker">Tienda · punto de efectivo</p>
+          <h1>Autorización diaria de pagos</h1>
+          <p className="dim">
+            Cada ingreso de efectivo se liquida al operador desde la billetera de Open Payments de la tienda. Un solo
+            consentimiento (grant GNAP) cubre todo el día hasta el límite.
+          </p>
 
-      {result === 'ok' && <p className="banner banner-ok">Autorización aprobada. El cajero ya puede recibir efectivo.</p>}
-      {result === 'error' && <p className="banner banner-error">No se aprobó la autorización. El cajero sigue fuera de servicio.</p>}
-      {offline && <p className="banner banner-error">Sin conexión con el backend.</p>}
+          {result === 'ok' && (
+            <p className="banner banner-ok">Autorización aprobada. El cajero ya puede recibir efectivo.</p>
+          )}
+          {result === 'error' && (
+            <p className="banner banner-error">No se aprobó la autorización. El cajero sigue fuera de servicio.</p>
+          )}
+          {offline && <p className="banner banner-error">Sin conexión con el backend.</p>}
 
-      <div className="stats">
-        <div className="stat">
-          <span>Estado</span>
-          <strong className={active ? 'ok' : 'error'}>
-            {!grant ? '…' : active ? 'Activa' : grant.status === 'expired' ? 'Vencida' : 'Sin autorizar'}
-          </strong>
-        </div>
-        <div className="stat">
-          <span>Usado hoy</span>
-          <strong>
-            {fmt(grant?.spentCop)} / {fmt(grant?.limitCop)}
-          </strong>
-        </div>
-        <div className="stat">
-          <span>Vence</span>
-          <strong>{time(grant?.expiresAt)}</strong>
-        </div>
-      </div>
-      {limit > 0 && (
-        <div className="atm-meter" role="meter" aria-label="Límite diario usado" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={spent}>
-          <span style={{ width: `${Math.min(100, (spent / limit) * 100)}%` }} />
-        </div>
-      )}
+          <div className="stats">
+            <div className="stat">
+              <span>Estado</span>
+              <strong className={active ? 'ok' : 'error'}>
+                {!grant ? '…' : active ? 'Activa' : grant.status === 'expired' ? 'Vencida' : 'Sin autorizar'}
+              </strong>
+            </div>
+            <div className="stat">
+              <span>Usado hoy</span>
+              <strong>
+                {fmt(grant?.spentCop)} / {fmt(grant?.limitCop)}
+              </strong>
+            </div>
+            <div className="stat">
+              <span>Vence</span>
+              <strong>{time(grant?.expiresAt)}</strong>
+            </div>
+          </div>
+          {limit > 0 && (
+            <div
+              className="atm-meter"
+              role="meter"
+              aria-label="Límite diario usado"
+              aria-valuemin={0}
+              aria-valuemax={limit}
+              aria-valuenow={spent}
+            >
+              <span style={{ width: `${Math.min(100, (spent / limit) * 100)}%` }} />
+            </div>
+          )}
 
-      <div className="row">
-        <a className="btn" href={api.grantStartUrl}>
-          {active ? 'Renovar autorización' : 'Autorizar el día'}
-        </a>
+          <div className="row">
+            <a className="btn" href={api.grantStartUrl}>
+              {active ? 'Renovar autorización' : 'Autorizar el día'}
+            </a>
+          </div>
+        </div>
       </div>
     </section>
   )

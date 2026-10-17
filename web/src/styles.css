@@ -294,6 +294,7 @@ h2 { font-weight: 650; }
 .iso-line { fill: none; }
 .iso-fill { fill: var(--face-2); }
 .iso-ink { fill: var(--ink); }
+.iso-awning-on { fill: var(--accent); }
 .scene { display: block; width: 100%; max-width: 320px; height: auto; margin: -4px auto 8px; }
 .iso-shadow { fill: var(--face-2); stroke: none !important; }
 .iso-dash { fill: none; stroke: var(--signal) !important; stroke-dasharray: 3 4; animation: flow 1.2s linear infinite; }

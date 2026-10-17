@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type CashIn, type CashInStatus, type Inventory } from '../api'
 import { formatCop } from '../cajero/cash'
 import { shortAddress } from '../cajero/validate'
+import { ServerScene } from '../iso/scenes'
 
 const POLL_MS = 2000
 
@@ -59,38 +60,50 @@ export function Operador() {
 
   return (
     <section className="panel">
-      <p className="kicker">Operador</p>
-      <h1>Liquidación e inventario</h1>
-      {offline && <p className="banner banner-error">Sin conexión con el backend.</p>}
-      {low && (
-        <p className="banner banner-warn">
-          Inventario por debajo del {inventory!.lowThresholdPct}%: reponer USDC con los COP liquidados.
-        </p>
-      )}
+      <div className="panel-grid">
+        <ServerScene pct={pct} low={low} />
+        <div>
+          <p className="kicker">Operador</p>
+          <h1>Liquidación e inventario</h1>
+          {offline && <p className="banner banner-error">Sin conexión con el backend.</p>}
+          {low && (
+            <p className="banner banner-warn">
+              Inventario por debajo del {inventory!.lowThresholdPct}%: reponer USDC con los COP liquidados.
+            </p>
+          )}
 
-      <div className="stats">
-        <div className="stat">
-          <span>Inventario USDC</span>
-          <strong className={low ? 'error' : undefined}>
-            {inventory ? `${inventory.usdc} / ${inventory.floatUsdc}` : '…'}
-          </strong>
+          <div className="stats">
+            <div className="stat">
+              <span>Inventario USDC</span>
+              <strong className={low ? 'error' : undefined}>
+                {inventory ? `${inventory.usdc} / ${inventory.floatUsdc}` : '…'}
+              </strong>
+            </div>
+            <div className="stat">
+              <span>Recibido por Open Payments</span>
+              <strong>{formatCop(settledCop)} COP</strong>
+            </div>
+            <div className="stat">
+              <span>Ingresos liquidados</span>
+              <strong>{settled.length}</strong>
+            </div>
+          </div>
+          <div
+            className="atm-meter"
+            role="meter"
+            aria-label="Inventario de USDC"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(pct)}
+          >
+            <span style={{ width: `${Math.min(100, pct)}%`, background: low ? 'var(--danger)' : undefined }} />
+          </div>
+          <div className="row">
+            <button type="button" className="btn" onClick={refill} disabled={refilling || !inventory || usdc >= float}>
+              {refilling ? 'Reponiendo…' : 'Reponer USDC'}
+            </button>
+          </div>
         </div>
-        <div className="stat">
-          <span>Recibido por Open Payments</span>
-          <strong>{formatCop(settledCop)} COP</strong>
-        </div>
-        <div className="stat">
-          <span>Ingresos liquidados</span>
-          <strong>{settled.length}</strong>
-        </div>
-      </div>
-      <div className="atm-meter" role="meter" aria-label="Inventario de USDC" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-        <span style={{ width: `${Math.min(100, pct)}%`, background: low ? 'var(--error)' : undefined }} />
-      </div>
-      <div className="row">
-        <button type="button" className="btn" onClick={refill} disabled={refilling || !inventory || usdc >= float}>
-          {refilling ? 'Reponiendo…' : 'Reponer USDC'}
-        </button>
       </div>
 
       <h2>Pagos recibidos</h2>
@@ -118,7 +131,11 @@ export function Operador() {
                   <td className="mono">{shortAddress(c.stellarAddress)}</td>
                   <td className="mono">
                     {c.stellarTxHash ? (
-                      <a href={`https://stellar.expert/explorer/testnet/tx/${c.stellarTxHash}`} target="_blank" rel="noreferrer">
+                      <a
+                        href={`https://stellar.expert/explorer/testnet/tx/${c.stellarTxHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
                         {c.memo}
                       </a>
                     ) : (

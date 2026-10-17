@@ -72,3 +72,61 @@ export function AtmScene() {
     </IsoSvg>
   )
 }
+
+/** Store with the cashier out front; the cube on the roof turns green while the daily grant is active. */
+export function StoreScene({ active }: { active: boolean }) {
+  const g = 0.5
+  return (
+    <IsoSvg viewBox="-8.4 -3.6 17.6 13.6" label={active ? 'Tienda con autorización activa' : 'Tienda sin autorización'}>
+      <IsoBox x={0} y={0} z={0} w={10} d={9} h={g} />
+      <IsoBox x={1.5} y={1.5} z={g} w={5} d={4} h={3.2} />
+      <IsoBox x={1.3} y={1.3} z={g + 3.2} w={5.4} d={4.4} h={0.35} />
+      <IsoPoly p={onLeftFace(2.2, 4, 5.5, 1.3, 2.4)} className="iso-line" />
+      <IsoPoly p={onLeftFace(4.6, 5.8, 5.5, g, 2.4)} className="iso-fill" />
+      <IsoPoly
+        p={[
+          [2, 5.5, 3.2],
+          [6, 5.5, 3.2],
+          [6, 6.6, 2.6],
+          [2, 6.6, 2.6],
+        ]}
+        className={active ? 'iso-awning-on' : 'iso-fill'}
+      />
+      <g className={active ? 'iso-float' : undefined}>
+        <IsoBox x={3.4} y={3} z={g + 3.65} w={1.2} d={1.2} h={1.2} tone={active ? 'accent' : 'plain'} />
+      </g>
+      <IsoBox x={7.2} y={6} z={g} w={1.2} d={1} h={2.2} />
+      <IsoPoly p={onLeftFace(7.4, 8.2, 7, 1.8, 2.5)} className="iso-fill" />
+    </IsoSvg>
+  )
+}
+
+/** Operator server with a column of USDC coins: one coin per 10% of the float. */
+export function ServerScene({ pct, low }: { pct: number; low: boolean }) {
+  const g = 0.5
+  const coins = Math.max(0, Math.min(10, Math.round(pct / 10)))
+  const [cx, cy] = iso(8, 3, g)
+  return (
+    <IsoSvg viewBox="-7.6 -2.8 17 12.4" label={`Servidor del operador con ${coins * 10}% de USDC`}>
+      <IsoBox x={0} y={0} z={0} w={10} d={8} h={g} />
+      <polyline className="iso-dash" points={points([4.9, 3, g], [7, 3, g])} />
+      <IsoBox x={1.5} y={1.5} z={g} w={3.4} d={3.4} h={1.5} />
+      <IsoBox x={1.5} y={1.5} z={g + 1.5} w={3.4} d={3.4} h={1.5} />
+      <Dots x={2.1} y={4.9} z={g + 2.25} />
+      {[2.3, 2.6, 2.9].map((y) => (
+        <IsoPoly
+          key={y}
+          p={[
+            [4.9, y, g + 1.9],
+            [4.9, y, g + 2.6],
+          ]}
+          className="iso-line"
+        />
+      ))}
+      {coins === 0 && <ellipse className="iso-line" cx={cx} cy={cy} rx={1.1} ry={0.64} />}
+      {Array.from({ length: coins }, (_, i) => (
+        <IsoCylinder key={i} x={8} y={3} z={g + i * 0.38} r={0.9} h={0.3} tone={low ? 'danger' : 'signal'} />
+      ))}
+    </IsoSvg>
+  )
+}
