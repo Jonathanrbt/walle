@@ -57,6 +57,16 @@ describe('fake payments network', () => {
     await network.createOutgoingPayment({ quoteId: quote.id, accessToken: 'grant-token' })
   })
 
+  it('rejects only when the quoted receive would be non-positive', async () => {
+    const network = new FakePaymentsNetwork({ rate: money(100n, 'COP', 2) })
+    const incoming = await network.createIncomingPayment({})
+    const quote = await network.createQuote({
+      incomingPaymentUrl: incoming.url,
+      debit: money(100n, 'COP', 2),
+    })
+    expect(quote.receive).toEqual(money(100n, 'USD', 2))
+  })
+
   it('completes an incoming payment only when asked', async () => {
     const network = new FakePaymentsNetwork()
     const incoming = await network.createIncomingPayment({})

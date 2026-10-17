@@ -32,20 +32,20 @@ export interface GrantGateway {
 }
 
 /**
- * GNAP finish hash. Base string is four lines (nonce, AS finish nonce, interact_ref,
- * grant endpoint) joined by a newline, SHA-256, standard base64 with padding.
- * `continueUri` carries the grant endpoint: the wallet auth server that was POSTed to.
+ * GNAP finish hash. Base string is four lines (client nonce, AS finish nonce,
+ * interact_ref, grant endpoint) joined by a newline, SHA-256, standard base64
+ * with padding. The grant endpoint is the auth server URL the grant was POSTed
+ * to. It is not the continuation URI.
  */
 export function verifyFinishHash(input: {
   readonly nonce: string
   readonly interactRef: string
   readonly interactNonce: string
   readonly hash: string
-  readonly continueUri?: string
+  readonly grantEndpoint: string
 }): boolean {
-  const base = [input.nonce, input.interactNonce, input.interactRef, input.continueUri ?? ''].join(
-    '\n',
-  )
+  if (input.grantEndpoint.length === 0) return false
+  const base = [input.nonce, input.interactNonce, input.interactRef, input.grantEndpoint].join('\n')
   const actual = createHash('sha256').update(base).digest()
   const expected = Buffer.from(input.hash, 'base64')
   const encoded = actual.toString('base64')

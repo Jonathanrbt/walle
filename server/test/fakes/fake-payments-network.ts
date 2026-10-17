@@ -3,7 +3,6 @@ import type { Clock } from '../../src/shared/ports.ts'
 import { money, type Money } from '../../src/shared/money.ts'
 
 const DEFAULT_RATE = money(317698n, 'COP', 2)
-const MINIMUM_DEBIT = money(3177n, 'COP', 2)
 const QUOTE_TTL_MS = 300_000
 const INCOMING_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -113,9 +112,6 @@ export class FakePaymentsNetwork implements PaymentsNetwork {
       this.#requireIncoming(input.incomingPaymentUrl)
       if (input.debit.assetCode !== 'COP' || input.debit.assetScale !== 2) {
         throw new PaymentsNetworkError('rejected', 'debit asset does not match the store wallet')
-      }
-      if (input.debit.amount < MINIMUM_DEBIT.amount) {
-        throw new PaymentsNetworkError('rejected', 'non-positive receive amount')
       }
       const receive = money((input.debit.amount * 100n) / this.#rate.amount, 'USD', 2)
       if (receive.amount <= 0n) {
