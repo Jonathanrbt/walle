@@ -27,6 +27,9 @@ interface LiveToken {
   readonly expiresAt: number
 }
 
+/** Fixed auth-server URL. The finish hash is bound to this endpoint, not the continuation URI. */
+export const FAKE_GRANT_ENDPOINT = 'https://auth.example.test/gnap'
+
 export class FakeGrantGateway implements GrantGateway {
   readonly #clock: ManualClock
   readonly #ttlMs: number
@@ -45,6 +48,7 @@ export class FakeGrantGateway implements GrantGateway {
     continueUri: string
     continueAccessToken: string
     interactNonce: string
+    grantEndpoint: string
     waitSeconds: number
   }> {
     return settle(() => {
@@ -67,6 +71,7 @@ export class FakeGrantGateway implements GrantGateway {
         continueUri,
         continueAccessToken,
         interactNonce: `finish-${id}`,
+        grantEndpoint: FAKE_GRANT_ENDPOINT,
         waitSeconds: 0,
       }
     })

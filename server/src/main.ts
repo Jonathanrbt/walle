@@ -1,18 +1,12 @@
-import { buildApp } from './adapters/http/app.ts'
-import { loggerOptions } from './adapters/http/logger.ts'
+import { composeApp } from './compose.ts'
 import { ConfigError, loadConfig } from './config.ts'
 
 try {
   const config = loadConfig(process.env)
-  const app = buildApp({
-    logger: {
-      ...loggerOptions,
-      level: config.http.logLevel,
-    },
-  })
+  const runtime = composeApp(config)
 
   const shutdown = (): void => {
-    app.close().catch((error: unknown) => {
+    runtime.close().catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : 'shutdown failed')
       process.exit(1)
     })
@@ -21,7 +15,7 @@ try {
   process.once('SIGINT', shutdown)
   process.once('SIGTERM', shutdown)
 
-  await app.listen({ port: config.http.port, host: '0.0.0.0' })
+  await runtime.app.listen({ port: config.http.port, host: '0.0.0.0' })
 } catch (error) {
   if (error instanceof ConfigError) {
     console.error(error.message)
