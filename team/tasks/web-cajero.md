@@ -61,7 +61,7 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
   - Acepta: tests de la máquina de estados simulada (`quoted → settling → settled → sending_usdc → completed` y la rama `failed_stellar` → reintentar).
 - [x] **W3 Billetera + ranura**: billetera con los 6 billetes, arrastrar a la ranura o clic para insertar, animación de entrada, total en COP con su equivalente en USDC en vivo, deshacer el último, tope del nivel 1 bloqueando billetes que lo excedan.
   - Acepta: tests de suma y tope; arrastrar y soltar con teclado y ratón probado en el navegador.
-- [ ] **W4 Captura interactiva de datos**: pantallas de teléfono, nombre y documento con teclado numérico en pantalla; dirección Stellar con «Conectar Freighter» (`@stellar/freighter-api`, red Testnet) o pegar `G…` validado.
+- [x] **W4 Captura interactiva de datos**: pantallas de teléfono, nombre y documento con teclado numérico en pantalla; dirección Stellar con «Conectar Freighter» (`@stellar/freighter-api`, red Testnet) o pegar `G…` validado.
   - Acepta: no avanza con datos inválidos; Freighter real devuelve la dirección en Testnet.
 - [ ] **W5 Cotización y confirmación**: `POST /api/cash-ins` → COP entregados, tasa, USDC a recibir, vencimiento con cuenta regresiva; confirmar o cancelar.
   - Acepta: la cotización vencida obliga a recotizar; cancelar lleva a «retire sus billetes».
@@ -80,6 +80,7 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
 - W1 (2026-10-16): `npm test` 1/1 en verde; `npm run build` en verde (221 kB JS); servidor de desarrollo: `/`, `/tienda`, `/operador` renderizan, navegación interna y botón atrás funcionan, sin errores de consola, sin scroll horizontal a 375 px; `/api/rate` llega al proxy (502 sin backend).
 - W2 (2026-10-16): `npm test` 8/8 en verde (`src/api/mock.test.ts`: recorrido completo, `failed_stellar` → reintentar, cotización vencida, límites de nivel 1, `grant` faltante/forzado/agotado/vencido, dirección inválida, reposición); `npm run build` en verde.
 - W3 (2026-10-16): `npm test` 11/11 en verde (`src/cajero/cash.test.ts`: suma, conversión, tope de 100 USDC, existencias). En el navegador: arrastrar y soltar con `DataTransfer` (2 × 100.000), clic (50.000) y Enter con el foco (2.000) insertan; a 400.000 COP se deshabilitan 20.000/50.000/100.000 con aviso; 412.000 COP = 100.00 USDC llena el medidor; deshacer, continuar y cancelar funcionan; sin scroll horizontal a 375 px; sin errores de consola. Falta probar a mano el arrastre con el ratón físico: el arrastre sintético del navegador de pruebas no dispara eventos HTML5.
+- W4 (2026-10-16): `src/cajero/validate.test.ts` 2/2. En el navegador: el teclado en pantalla solo habilita OK con 10 dígitos que empiezan por 3; el nombre exige nombre y apellido; la cédula filtra lo que no son dígitos; la dirección `gabc` se rechaza y una `G…` válida muestra «Enviaremos a GBRPYH…C7OX2H»; Atrás conserva los datos; sin la extensión, «Conectar Freighter» avisa a los ~2 s y deja pegar. Falta probar con Freighter instalado (Testnet).
 
 ## Progreso
 2026-10-16: reclamo creado; contratos propuestos en `team/contracts.md` (pendientes de acuerdo con quien haga el backend).

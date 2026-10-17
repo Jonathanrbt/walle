@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { DropZone, Wallet } from '../cajero/Billetes'
+import { FieldStep } from '../cajero/Datos'
+import { AddressStep } from '../cajero/Direccion'
 import {
   fits,
   formatCop,
@@ -12,11 +14,17 @@ import {
   usdcCents,
   type Bill,
 } from '../cajero/cash'
+import { validDocument, validName, validPhone } from '../cajero/validate'
+import type { Customer } from '../api'
 
-type Step = 'idle' | 'billetes' | 'cotizacion'
+type Step = 'idle' | 'telefono' | 'nombre' | 'documento' | 'direccion' | 'billetes' | 'cotizacion'
+
+const EMPTY_CUSTOMER: Customer = { phone: '', fullName: '', documentNumber: '' }
 
 export function Cajero() {
   const [step, setStep] = useState<Step>('idle')
+  const [customer, setCustomer] = useState<Customer>(EMPTY_CUSTOMER)
+  const [address, setAddress] = useState('')
   const [bills, setBills] = useState<Bill[]>([])
   const [lastInserted, setLastInserted] = useState<{ bill: Bill; seq: number } | null>(null)
   const [copPerUsdc, setCopPerUsdc] = useState<number | null>(null)
@@ -38,6 +46,8 @@ export function Cajero() {
   }
 
   const reset = () => {
+    setCustomer(EMPTY_CUSTOMER)
+    setAddress('')
     setBills([])
     setLastInserted(null)
     setStep('idle')
@@ -55,15 +65,68 @@ export function Cajero() {
               <p className="atm-kicker">Efectivo → USDC en Stellar</p>
               <h1>Bienvenido</h1>
               <p>Convierte tus billetes en dólares digitales en tu propia billetera.</p>
-              <button type="button" className="atm-btn" onClick={() => setStep('billetes')}>
+              <button type="button" className="atm-btn" onClick={() => setStep('telefono')}>
                 Empezar
               </button>
             </>
           )}
 
+          {step === 'telefono' && (
+            <FieldStep
+              step="Paso 1 de 5 · Tus datos"
+              title="Número de celular"
+              hint="10 dígitos, empieza por 3."
+              value={customer.phone}
+              onChange={(phone) => setCustomer({ ...customer, phone })}
+              valid={validPhone(customer.phone)}
+              numeric
+              maxLength={10}
+              onNext={() => setStep('nombre')}
+              onBack={reset}
+            />
+          )}
+
+          {step === 'nombre' && (
+            <FieldStep
+              step="Paso 2 de 5 · Tus datos"
+              title="Nombre completo"
+              hint="Como aparece en tu documento."
+              value={customer.fullName}
+              onChange={(fullName) => setCustomer({ ...customer, fullName })}
+              valid={validName(customer.fullName)}
+              maxLength={80}
+              onNext={() => setStep('documento')}
+              onBack={() => setStep('telefono')}
+            />
+          )}
+
+          {step === 'documento' && (
+            <FieldStep
+              step="Paso 3 de 5 · Tus datos"
+              title="Número de cédula"
+              hint="Nivel 1: hasta 100 USDC por operación, 150 por día y 500 por mes."
+              value={customer.documentNumber}
+              onChange={(documentNumber) => setCustomer({ ...customer, documentNumber })}
+              valid={validDocument(customer.documentNumber)}
+              numeric
+              maxLength={10}
+              onNext={() => setStep('direccion')}
+              onBack={() => setStep('nombre')}
+            />
+          )}
+
+          {step === 'direccion' && (
+            <AddressStep
+              value={address}
+              onChange={setAddress}
+              onNext={() => setStep('billetes')}
+              onBack={() => setStep('documento')}
+            />
+          )}
+
           {step === 'billetes' && (
             <>
-              <p className="atm-kicker">Inserte sus billetes</p>
+              <p className="atm-kicker">Paso 5 de 5 · Inserte sus billetes</p>
               <p className="atm-total" aria-live="polite">
                 {formatCop(cop)} <small>COP</small>
               </p>
