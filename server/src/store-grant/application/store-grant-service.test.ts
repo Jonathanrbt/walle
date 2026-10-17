@@ -85,6 +85,106 @@ async function requirePending(grants: StoreGrantRepository): Promise<StoredGrant
   return pending
 }
 
+class ManualTimeouts implements TimeoutTimer {
+  readonly #pending = new Map<number, () => void>()
+  #next = 0
+
+  start(_ms: number, onFire: () => void): () => void {
+    const id = ++this.#next
+    this.#pending.set(id, onFire)
+    return () => {
+      this.#pending.delete(id)
+    }
+  }
+
+  armed(): number {
+    return this.#pending.size
+  }
+
+  fireOldest(): void {
+    const next = this.#pending.keys().next()
+    if (next.done) throw new Error('no timeout armed')
+    const onFire = this.#pending.get(next.value)
+    this.#pending.delete(next.value)
+    onFire?.()
+  }
+}
+
+function rotationFlightHarness(grants?: StoreGrantRepository) {
+  const clock = new ManualClock(START)
+  const inner = new FakeGrantGateway(clock, 120_000)
+  let rotateCalls = 0
+  let parked: { resolve: () => void; reject: (error: unknown) => void } | undefined
+  const gateway: GrantGateway = {
+    start: (input) => inner.start(input),
+    finish: (input) => inner.finish(input),
+    rotate(input) {
+      rotateCalls += 1
+      return new Promise((resolve, reject) => {
+        parked = {
+          resolve() {
+            resolve(inner.rotate(input))
+          },
+          reject,
+        }
+      })
+    },
+  }
+  const store = grants ?? createMemoryStoreGrantRepository(createMemoryCashInRepository())
+  const timer = new ManualTimeouts()
+  const events: { name: string; version: number }[] = []
+  let sequence = 0
+  const service = new StoreGrantService({
+    grants: store,
+    gateway,
+    clock,
+    ids: { next: () => `nonce-${String(++sequence)}` },
+    mutex: new Mutex(),
+    dailyGrantLimitCop: '100.00',
+    publicBaseUrl: 'http://localhost:3000',
+    rotateTimeoutMs: 10_000,
+    timer,
+    onEvent(name, details) {
+      events.push({ name, version: details.version })
+    },
+  })
+  return {
+    clock,
+    service,
+    grants: store,
+    timer,
+    events,
+    rotateCalls: () => rotateCalls,
+    settleRotation() {
+      const current = parked
+      if (current === undefined) throw new Error('rotation was not started')
+      parked = undefined
+      current.resolve()
+    },
+    failRotation(error: Error) {
+      const current = parked
+      if (current === undefined) throw new Error('rotation was not started')
+      parked = undefined
+      current.reject(error)
+    },
+  }
+}
+
+async function openActiveGrant(
+  subject: { service: StoreGrantService; grants: StoreGrantRepository },
+  interactRef = 'ref-flight',
+): Promise<StoredGrant> {
+  await subject.service.start()
+  const pending = await requirePending(subject.grants)
+  const hash = finishHash({
+    nonce: pending.nonce,
+    interactNonce: pending.interactNonce,
+    interactRef,
+    grantEndpoint: pending.grantEndpoint,
+  })
+  return subject.service.finish({ hash, interactRef })
+}
+
 async function activate(subject: ReturnType<typeof harness>, interactRef = 'ref-1') {
   const started = await subject.service.start()
   const pending = await requirePending(subject.grants)
@@ -384,62 +484,32 @@ describe('StoreGrantService', () => {
   })
 
   it('releases the mutex and leaves the grant untouched when rotation times out', async () => {
-    const clock = new ManualClock(START)
-    const inner = new FakeGrantGateway(clock, 120_000)
-    let hang = true
-    const gateway: GrantGateway = {
-      start: (input) => inner.start(input),
-      finish: (input) => inner.finish(input),
-      rotate: (input) => (hang ? new Promise(() => undefined) : inner.rotate(input)),
-    }
-    const grants = createMemoryStoreGrantRepository(createMemoryCashInRepository())
-    let fire: (() => void) | undefined
-    const timer: TimeoutTimer = {
-      start(_ms, onFire) {
-        fire = onFire
-        return () => {
-          if (fire === onFire) fire = undefined
-        }
-      },
-    }
-    let sequence = 0
-    const service = new StoreGrantService({
-      grants,
-      gateway,
-      clock,
-      ids: { next: () => `nonce-${String(++sequence)}` },
-      mutex: new Mutex(),
-      dailyGrantLimitCop: '100.00',
-      publicBaseUrl: 'http://localhost:3000',
-      rotateTimeoutMs: 10_000,
-      timer,
-    })
-    await service.start()
-    const pending = await grants.get()
-    if (pending === undefined) throw new Error('pending missing')
-    const interactRef = 'ref-timeout'
-    const hash = finishHash({
-      nonce: pending.nonce,
-      interactNonce: pending.interactNonce,
-      interactRef,
-      grantEndpoint: pending.grantEndpoint,
-    })
-    const active = await service.finish({ hash, interactRef })
-    clock.advance(61_000)
-    const before = await grants.get()
-    const hung = service.withAccessToken((token) => Promise.resolve(token))
-    await expect.poll(() => fire !== undefined).toBe(true)
-    fire?.()
+    const subject = rotationFlightHarness()
+    const active = await openActiveGrant(subject, 'ref-timeout')
+    subject.clock.advance(61_000)
+    const before = await subject.grants.get()
+    const hung = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    subject.timer.fireOldest()
     await expect(hung).rejects.toMatchObject({
+      name: 'PaymentsNetworkError',
       kind: 'unavailable',
       message: 'token rotation timed out',
     })
-    expect(await grants.get()).toEqual(before)
+    expect(await subject.grants.get()).toEqual(before)
     expect(before?.accessToken).toBe(active.accessToken)
+    expect(subject.events).toEqual([{ name: 'rotation_timeout', version: active.version }])
 
-    hang = false
-    const rotated = await service.withAccessToken((token) => Promise.resolve(token))
-    expect(rotated).not.toBe(active.accessToken)
+    const joined = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    expect(subject.rotateCalls()).toBe(1)
+    subject.timer.fireOldest()
+    await expect(joined).rejects.toMatchObject({
+      kind: 'unavailable',
+      message: 'token rotation timed out',
+    })
+    expect(subject.rotateCalls()).toBe(1)
+    expect(await subject.grants.get()).toEqual(before)
   })
 
   it('leaves the stored grant untouched when rotation fails', async () => {
@@ -481,5 +551,171 @@ describe('StoreGrantService', () => {
     ).rejects.toMatchObject({ kind: 'rejected' })
     expect(subject.rotateCalls()).toBe(0)
     expect((await subject.grants.get())?.accessToken).toBe(active.accessToken)
+  })
+
+  it('persists a rotation that succeeds after the caller timed out', async () => {
+    const subject = rotationFlightHarness()
+    const active = await openActiveGrant(subject, 'ref-late')
+    subject.clock.advance(61_000)
+    const hung = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    subject.timer.fireOldest()
+    await expect(hung).rejects.toMatchObject({
+      kind: 'unavailable',
+      message: 'token rotation timed out',
+    })
+
+    const joined = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    expect(subject.rotateCalls()).toBe(1)
+    subject.settleRotation()
+    const token = await joined
+    expect(token).not.toBe(active.accessToken)
+    expect((await subject.grants.get())?.accessToken).toBe(token)
+    expect(subject.rotateCalls()).toBe(1)
+    expect(subject.events).toEqual([
+      { name: 'rotation_timeout', version: active.version },
+      { name: 'rotation_late_success', version: active.version + 1 },
+    ])
+
+    const again = await subject.service.withAccessToken((held) => Promise.resolve(held))
+    expect(again).toBe(token)
+    expect(subject.rotateCalls()).toBe(1)
+  })
+
+  it('lets a second caller join one slow rotation', async () => {
+    const subject = rotationFlightHarness()
+    await openActiveGrant(subject, 'ref-join')
+    subject.clock.advance(61_000)
+    const first = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    const second = subject.service.withAccessToken((token) => Promise.resolve(token))
+    subject.settleRotation()
+    const tokens = await Promise.all([first, second])
+    expect(subject.rotateCalls()).toBe(1)
+    expect(tokens[0]).toBe(tokens[1])
+    expect((await subject.grants.get())?.accessToken).toBe(tokens[0])
+    expect(subject.events).toEqual([])
+  })
+
+  it('does not let a late rotation overwrite a newer token', async () => {
+    const subject = rotationFlightHarness()
+    const active = await openActiveGrant(subject, 'ref-newer')
+    subject.clock.advance(61_000)
+    const hung = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    subject.timer.fireOldest()
+    await expect(hung).rejects.toMatchObject({ kind: 'unavailable' })
+
+    const current = await subject.grants.get()
+    if (current === undefined) throw new Error('grant missing')
+    const newerExpiry = new Date(subject.clock.now().getTime() + DAY_MS)
+    await subject.grants.put(
+      {
+        ...current,
+        accessToken: 'newer-access-token',
+        manageUrl: 'https://grant.invalid/token/newer',
+        tokenExpiresAt: newerExpiry,
+        updatedAt: subject.clock.now(),
+        version: current.version + 1,
+      },
+      current.version,
+    )
+    subject.settleRotation()
+    await expect
+      .poll(() => subject.events.some((event) => event.name === 'rotation_late_success'))
+      .toBe(true)
+
+    const stored = await subject.grants.get()
+    expect(stored?.accessToken).toBe('newer-access-token')
+    expect(stored?.manageUrl).toBe('https://grant.invalid/token/newer')
+    expect(stored?.tokenExpiresAt?.toISOString()).toBe(newerExpiry.toISOString())
+    expect(stored?.version).toBe(active.version + 1)
+    expect(subject.rotateCalls()).toBe(1)
+  })
+
+  it('leaves the stored grant when a timed-out rotation fails later', async () => {
+    const subject = rotationFlightHarness()
+    const active = await openActiveGrant(subject, 'ref-late-fail')
+    subject.clock.advance(61_000)
+    const before = await subject.grants.get()
+    const hung = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    subject.timer.fireOldest()
+    await expect(hung).rejects.toMatchObject({
+      kind: 'unavailable',
+      message: 'token rotation timed out',
+    })
+
+    subject.failRotation(new PaymentsNetworkError('unauthorized', 'token rotation was rejected'))
+    await expect
+      .poll(() => subject.events.some((event) => event.name === 'rotation_late_failure'))
+      .toBe(true)
+    expect(await subject.grants.get()).toEqual(before)
+    expect(before?.accessToken).toBe(active.accessToken)
+    expect(subject.events).toEqual([
+      { name: 'rotation_timeout', version: active.version },
+      { name: 'rotation_late_failure', version: active.version },
+    ])
+
+    const retry = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.rotateCalls()).toBe(2)
+    subject.settleRotation()
+    const rotated = await retry
+    expect(rotated).not.toBe(active.accessToken)
+    expect((await subject.grants.get())?.accessToken).toBe(rotated)
+  })
+
+  it('retries a late rotation save once after a version conflict', async () => {
+    const inner = createMemoryStoreGrantRepository(createMemoryCashInRepository())
+    let armed = true
+    let conflictPuts = 0
+    const grants: StoreGrantRepository = {
+      get: () => inner.get(),
+      spentSince: (since) => inner.spentSince(since),
+      async put(next, expected) {
+        const current = await inner.get()
+        const rotating =
+          current?.status === 'active' &&
+          next.accessToken !== undefined &&
+          next.accessToken !== current.accessToken
+        if (armed && rotating) {
+          armed = false
+          conflictPuts += 1
+          await inner.put(
+            {
+              ...current,
+              updatedAt: new Date('2026-10-17T00:01:02.000Z'),
+              version: current.version + 1,
+            },
+            current.version,
+          )
+          throw new DomainError('version_conflict', 'version conflict')
+        }
+        await inner.put(next, expected)
+      },
+    }
+    const subject = rotationFlightHarness(grants)
+    const active = await openActiveGrant(subject, 'ref-late-conflict')
+    subject.clock.advance(61_000)
+    const hung = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    subject.timer.fireOldest()
+    await expect(hung).rejects.toMatchObject({ kind: 'unavailable' })
+
+    const joined = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    expect(subject.rotateCalls()).toBe(1)
+    subject.settleRotation()
+    const token = await joined
+    expect(conflictPuts).toBe(1)
+    expect(subject.rotateCalls()).toBe(1)
+    expect(token).not.toBe(active.accessToken)
+    expect((await subject.grants.get())?.accessToken).toBe(token)
+    expect((await subject.grants.get())?.version).toBe(active.version + 2)
+    expect(subject.events).toEqual([
+      { name: 'rotation_timeout', version: active.version },
+      { name: 'rotation_late_success', version: active.version + 2 },
+    ])
   })
 })
