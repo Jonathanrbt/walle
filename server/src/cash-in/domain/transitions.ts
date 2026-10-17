@@ -2,7 +2,8 @@ import { DomainError } from '../../shared/errors.ts'
 import type { CashIn, CashInStatus } from './cash-in.ts'
 
 export type CashInEvent =
-  | { readonly type: 'Confirm'; readonly outgoingPaymentId: string }
+  | { readonly type: 'Confirm' }
+  | { readonly type: 'OutgoingCreated'; readonly outgoingPaymentId: string }
   | { readonly type: 'Expire' }
   | { readonly type: 'IncomingCompleted' }
   | { readonly type: 'PaymentFailed'; readonly reason: string }
@@ -13,6 +14,16 @@ export type CashInEvent =
     }
   | { readonly type: 'UsdcSent'; readonly stellarTxHash: string }
   | { readonly type: 'UsdcFailed'; readonly reason: string }
+  /**
+   * Replace the stored envelope and hash. The caller must already have proven the
+   * previous envelope can never apply (`UsdcNetwork.isEnvelopeDead`). The domain
+   * stays pure and does not consult the network.
+   */
+  | {
+      readonly type: 'UsdcEnvelopeRebuilt'
+      readonly envelopeXdr: string
+      readonly txHash: string
+    }
   | { readonly type: 'Retry' }
 
 interface TransitionPatch {
@@ -27,7 +38,9 @@ interface TransitionPatch {
 export function transition(cashIn: CashIn, event: CashInEvent, now: Date): CashIn {
   switch (event.type) {
     case 'Confirm':
-      return confirm(cashIn, event.outgoingPaymentId, now)
+      return confirm(cashIn, now)
+    case 'OutgoingCreated':
+      return outgoingCreated(cashIn, event.outgoingPaymentId, now)
     case 'Expire':
       return expire(cashIn, now)
     case 'IncomingCompleted':
@@ -43,6 +56,8 @@ export function transition(cashIn: CashIn, event: CashInEvent, now: Date): CashI
     case 'UsdcFailed':
       requireStatus(cashIn, 'sending_usdc')
       return advance(cashIn, 'failed_stellar', now, { failureReason: event.reason })
+    case 'UsdcEnvelopeRebuilt':
+      return rebuildEnvelope(cashIn, event.envelopeXdr, event.txHash, now)
     case 'Retry':
       return retry(cashIn, now)
     default: {
@@ -52,10 +67,18 @@ export function transition(cashIn: CashIn, event: CashInEvent, now: Date): CashI
   }
 }
 
-function confirm(cashIn: CashIn, outgoingPaymentId: string, now: Date): CashIn {
+function confirm(cashIn: CashIn, now: Date): CashIn {
   requireStatus(cashIn, 'quoted')
   if (now.getTime() >= cashIn.expiresAt.getTime()) {
     throw new DomainError('quote_expired', 'quote expired')
+  }
+  return advance(cashIn, 'settling', now, {})
+}
+
+function outgoingCreated(cashIn: CashIn, outgoingPaymentId: string, now: Date): CashIn {
+  requireStatus(cashIn, 'settling')
+  if (cashIn.openPayments.outgoingPaymentId !== undefined) {
+    throw new DomainError('invalid_transition', 'outgoing payment is already stored')
   }
   return advance(cashIn, 'settling', now, { outgoingPaymentId })
 }
@@ -88,6 +111,20 @@ function markSent(cashIn: CashIn, stellarTxHash: string, now: Date): CashIn {
     throw new DomainError('invalid_transition', 'stellar transaction hash does not match')
   }
   return advance(cashIn, 'completed', now, {})
+}
+
+function rebuildEnvelope(cashIn: CashIn, envelopeXdr: string, txHash: string, now: Date): CashIn {
+  if (cashIn.status !== 'failed_stellar' && cashIn.status !== 'sending_usdc') {
+    throw new DomainError('invalid_transition', 'transition is not allowed')
+  }
+  if (cashIn.stellarEnvelopeXdr === undefined || cashIn.stellarTxHash === undefined) {
+    throw new DomainError('invalid_transition', 'stellar envelope is missing')
+  }
+  return advance(cashIn, 'sending_usdc', now, {
+    stellarEnvelopeXdr: envelopeXdr,
+    stellarTxHash: txHash,
+    clearFailure: true,
+  })
 }
 
 function retry(cashIn: CashIn, now: Date): CashIn {

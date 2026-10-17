@@ -18,6 +18,8 @@ const headers = z.looseObject({
 export interface CashInRoutes {
   create(input: CreateCashInInput): Promise<CashInDomain>
   get(id: string): Promise<CashInDomain>
+  confirm(id: string): Promise<CashInDomain>
+  retry(id: string): Promise<CashInDomain>
 }
 
 export function registerCashInRoutes(app: FastifyInstance, cashIns: CashInRoutes): void {
@@ -53,5 +55,29 @@ export function registerCashInRoutes(app: FastifyInstance, cashIns: CashInRoutes
       },
     },
     async (request) => toCashInDto(await cashIns.get(request.params.id)),
+  )
+
+  routes.post(
+    '/api/cash-ins/:id/confirm',
+    {
+      schema: {
+        params,
+        response: { 202: CashIn },
+      },
+    },
+    async (request, reply) =>
+      reply.status(202).send(toCashInDto(await cashIns.confirm(request.params.id))),
+  )
+
+  routes.post(
+    '/api/cash-ins/:id/retry',
+    {
+      schema: {
+        params,
+        response: { 202: CashIn },
+      },
+    },
+    async (request, reply) =>
+      reply.status(202).send(toCashInDto(await cashIns.retry(request.params.id))),
   )
 }

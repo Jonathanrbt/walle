@@ -25,6 +25,8 @@ const WEB = 'http://localhost:5173'
 const unusedCashIns = {
   create: () => Promise.reject(new Error('unused')),
   get: () => Promise.reject(new Error('unused')),
+  confirm: () => Promise.reject(new Error('unused')),
+  retry: () => Promise.reject(new Error('unused')),
 }
 
 function finishHash(input: {
