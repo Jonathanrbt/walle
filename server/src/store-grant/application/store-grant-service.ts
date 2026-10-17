@@ -292,7 +292,7 @@ export class StoreGrantService {
     base: StoredGrant,
     rotated: { accessToken: string; manageUrl: string; tokenExpiresAt: Date },
   ): Promise<StoredGrant> {
-    if (incomingRotationIsStale(base, source, rotated.tokenExpiresAt)) return base
+    if (incomingRotationIsStale(base, source)) return base
     const next: StoredGrant = {
       ...base,
       accessToken: rotated.accessToken,
@@ -392,16 +392,9 @@ function isVersionConflict(error: unknown): error is DomainError {
   return error instanceof DomainError && error.code === 'version_conflict'
 }
 
-function incomingRotationIsStale(
-  stored: StoredGrant,
-  source: StoredGrant,
-  incomingExpiresAt: Date,
-): boolean {
+function incomingRotationIsStale(stored: StoredGrant, source: StoredGrant): boolean {
   if (stored.version <= source.version) return false
-  if (stored.accessToken === undefined || stored.accessToken === source.accessToken) return false
-  const storedExpiresAt = stored.tokenExpiresAt?.getTime()
-  if (storedExpiresAt === undefined) return false
-  return storedExpiresAt >= incomingExpiresAt.getTime()
+  return stored.accessToken !== undefined && stored.accessToken !== source.accessToken
 }
 
 function joinUrl(base: string, path: string): string {

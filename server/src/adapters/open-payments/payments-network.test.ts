@@ -232,6 +232,98 @@ describe('createPaymentsNetwork', () => {
     expect(create).toHaveBeenCalledTimes(4)
   })
 
+  it('keeps a refreshed quote grant when an older 401 finishes later', async () => {
+    const clock = new ManualClock('2026-10-17T00:00:00.000Z')
+    let rejectStale: (error: unknown) => void = () => {
+      throw new Error('stale quote was not started')
+    }
+    const staleCall = new Promise<never>((_resolve, reject) => {
+      rejectStale = reject
+    })
+    const request = vi.fn(() =>
+      Promise.resolve(approved(request.mock.calls.length === 1 ? 'stale' : 'fresh', 300)),
+    )
+    const create = vi.fn(({ accessToken }: { accessToken: string }) => {
+      if (accessToken === 'stale') return staleCall
+      return Promise.resolve(QUOTE)
+    })
+    const network = createPaymentsNetwork(
+      {
+        store: session({ client: client({ grant: { request }, quote: { create } }) }),
+        operator: session({ client: client({}) }),
+      },
+      clock,
+    )
+
+    const slow = network.createQuote(quoteInput)
+    await vi.waitFor(() => {
+      expect(create).toHaveBeenCalled()
+    })
+    clock.advance(300_000)
+    await network.createQuote(quoteInput)
+    expect(request).toHaveBeenCalledTimes(2)
+
+    rejectStale(unauthorized())
+    await slow
+    expect(request).toHaveBeenCalledTimes(2)
+    await network.createQuote(quoteInput)
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('a quote 401 does not drop the incoming-payment grant', async () => {
+    let quoteGrants = 0
+    let incomingGrants = 0
+    const quoteRequest = vi.fn(() => {
+      quoteGrants += 1
+      return Promise.resolve(approved(quoteGrants === 1 ? 'q-stale' : 'q-fresh', 300))
+    })
+    const incomingRequest = vi.fn(() => {
+      incomingGrants += 1
+      return Promise.resolve(approved('in-token', 300))
+    })
+    const create = vi.fn(({ accessToken }: { accessToken: string }) => {
+      if (accessToken === 'q-stale') return Promise.reject(unauthorized())
+      return Promise.resolve(QUOTE)
+    })
+    const get = vi.fn(() =>
+      Promise.resolve({
+        receivedAmount: { value: '314', assetCode: 'USD', assetScale: 2 },
+        completed: false,
+      }),
+    )
+    const incomingCreate = vi.fn(() =>
+      Promise.resolve({
+        id: 'https://rs.example.test/incoming/1',
+        expiresAt: '2026-11-16T00:00:00.000Z',
+      }),
+    )
+    const network = createPaymentsNetwork({
+      store: session({
+        client: client({ grant: { request: quoteRequest }, quote: { create } }),
+      }),
+      operator: session({
+        id: 'https://wallet.example.test/operator',
+        assetCode: 'USD',
+        assetScale: 2,
+        client: client({
+          grant: { request: incomingRequest },
+          incomingPayment: { create: incomingCreate, get },
+        }),
+      }),
+    })
+
+    await network.createIncomingPayment({})
+    await network.createQuote(quoteInput)
+    await network.getIncomingPayment('https://rs.example.test/incoming/1')
+
+    expect(incomingGrants).toBe(1)
+    expect(quoteGrants).toBe(2)
+    expect(get).toHaveBeenCalledWith({
+      url: 'https://rs.example.test/incoming/1',
+      accessToken: 'in-token',
+    })
+  })
+
   it('does not refresh the grant on 403', async () => {
     const request = vi.fn(() => Promise.resolve(approved('quote-token', 300)))
     const create = vi.fn(() =>
@@ -570,6 +662,40 @@ describe('createPaymentsNetwork', () => {
       detail: 'outgoing payment list exceeded the scan cap',
     })
     expect(capped).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a repeated page cursor instead of reporting no payment', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result: [{ id: 'https://rs.example.test/outgoing/1', quoteId: 'other' }],
+        pagination: {
+          hasNextPage: true,
+          hasPreviousPage: false,
+          endCursor: 'same',
+          startCursor: 'start-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        result: [{ id: 'https://rs.example.test/outgoing/2', quoteId: 'other' }],
+        pagination: {
+          hasNextPage: true,
+          hasPreviousPage: true,
+          endCursor: 'same',
+          startCursor: 'start-2',
+        },
+      })
+    const network = createPaymentsNetwork({
+      store: session({ client: client({ outgoingPayment: { list } }) }),
+      operator: session({ client: client({}) }),
+    })
+    await expect(
+      network.findOutgoingPaymentByQuote({ quoteId: QUOTE.id, accessToken: 'user-token' }),
+    ).rejects.toMatchObject({
+      kind: 'unavailable',
+      retryable: true,
+    })
+    expect(list).toHaveBeenCalledTimes(2)
   })
 })
 

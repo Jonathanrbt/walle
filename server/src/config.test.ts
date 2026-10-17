@@ -81,6 +81,7 @@ describe('loadConfig', () => {
     expect(config.business.dailyGrantLimitCop).toBe('2000000')
     expect(config.business.usdcFloat).toBe('1000')
     expect(config.database.path).toBe('data/walle.sqlite')
+    expect(config.http.operatorToken).toBeUndefined()
     expect(Object.isFrozen(config)).toBe(true)
     expect(Object.isFrozen(config.store)).toBe(true)
   })
@@ -163,5 +164,19 @@ describe('loadConfig', () => {
     expect(message).not.toContain(secrets.keyId)
     expect(message).not.toContain(secrets.pem)
     expect(message).not.toContain(secrets.seed)
+  })
+
+  it('accepts an operator token of at least 16 characters and treats blank as unset', () => {
+    const token = 'operator-token-16'
+    const config = loadConfig(validEnv({ OPERATOR_TOKEN: `  ${token}  ` }))
+    expect(config.http.operatorToken).toBe(token)
+    expect(loadConfig(validEnv({ OPERATOR_TOKEN: '   ' })).http.operatorToken).toBeUndefined()
+  })
+
+  it('rejects a short operator token without echoing it', () => {
+    const token = 'too-short'
+    const message = configErrorMessage(validEnv({ OPERATOR_TOKEN: token }))
+    expect(message).toContain('OPERATOR_TOKEN')
+    expect(message).not.toContain(token)
   })
 })

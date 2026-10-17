@@ -93,7 +93,10 @@ class ScriptedUsdc implements UsdcNetwork {
     return Promise.resolve(this.submitResult)
   }
 
+  lookupError: Error | undefined = undefined
+
   lookup(): Promise<LookupResult> {
+    if (this.lookupError !== undefined) return Promise.reject(this.lookupError)
     return Promise.resolve(this.lookupResult)
   }
 
@@ -679,6 +682,33 @@ describe('SettlementProcessor', () => {
     await live.processor.runOnce()
     expect((await live.repo.get(open.id))?.status).toBe('completed')
     expect(live.usdc.submits).toBe(1)
+  })
+
+  it('does not restart the dead-envelope window when lookup fails', async () => {
+    const subject = harness()
+    const cashIn = await settling(subject, true)
+    const settled = await apply(subject.repo, cashIn, { type: 'IncomingCompleted' }, NOW)
+    await apply(
+      subject.repo,
+      settled,
+      { type: 'UsdcSendStarted', stellarEnvelopeXdr: 'old', stellarTxHash: 'old-hash' },
+      NOW,
+    )
+    subject.usdc.dead = true
+    subject.usdc.accountSequence = '6'
+    await subject.processor.runOnce()
+    expect(subject.usdc.prepares).toBe(0)
+
+    subject.usdc.lookupError = new StellarError('unavailable', 'horizon timed out')
+    subject.clock.advance(15_000)
+    await subject.processor.runOnce()
+    expect((await subject.repo.get(cashIn.id))?.stellarTxHash).toBe('old-hash')
+
+    subject.usdc.lookupError = undefined
+    subject.clock.advance(1000)
+    await subject.processor.runOnce()
+    expect((await subject.repo.get(cashIn.id))?.stellarTxHash).toBe('hash-1')
+    expect(subject.usdc.prepares).toBe(1)
   })
 
   it('does not touch failed_stellar until a retry reopens it', async () => {

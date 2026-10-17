@@ -52,6 +52,7 @@ export interface Config {
     readonly publicBaseUrl: string
     readonly webBaseUrl: string
     readonly logLevel: LogLevel
+    readonly operatorToken?: string
   }
   readonly business: {
     readonly referenceCopPerUsd: string
@@ -181,6 +182,10 @@ const envSchema = z.object({
   LOG_LEVEL: z
     .enum(LOG_LEVELS, { error: rule('LOG_LEVEL', 'must be a known level') })
     .default(DEFAULTS.LOG_LEVEL),
+  OPERATOR_TOKEN: z
+    .string({ error: rule('OPERATOR_TOKEN', 'must be at least 16 characters') })
+    .min(16, { error: rule('OPERATOR_TOKEN', 'must be at least 16 characters') })
+    .optional(),
 })
 
 function present(env: Env, key: string): string | undefined {
@@ -259,6 +264,7 @@ export function loadConfig(env: Env): Config {
       publicBaseUrl: data.PUBLIC_BASE_URL,
       webBaseUrl: data.WEB_BASE_URL,
       logLevel: data.LOG_LEVEL,
+      ...(data.OPERATOR_TOKEN === undefined ? {} : { operatorToken: data.OPERATOR_TOKEN }),
     },
     business: {
       referenceCopPerUsd: data.REFERENCE_COP_PER_USD,
