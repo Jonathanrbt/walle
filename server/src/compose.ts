@@ -5,20 +5,31 @@ import { buildApp } from './adapters/http/app.ts'
 import { loggerOptions, type LoggerOptions } from './adapters/http/logger.ts'
 import { createGrantGateway } from './adapters/open-payments/grant-gateway.ts'
 import { openWalletSession } from './adapters/open-payments/clients.ts'
+import { createPaymentsNetwork } from './adapters/open-payments/payments-network.ts'
+import { SqliteCashInRepository } from './adapters/sqlite/cash-in-repository.ts'
 import { openDatabase } from './adapters/sqlite/database.ts'
 import { migrate } from './adapters/sqlite/migrate.ts'
 import { SqliteStoreGrantRepository } from './adapters/sqlite/store-grant-repository.ts'
+import { HorizonUsdcNetwork } from './adapters/stellar/usdc-network.ts'
 import type { Config } from './config.ts'
+import { CreateCashIn } from './cash-in/application/create-cash-in.ts'
+import { GetCashIn } from './cash-in/application/get-cash-in.ts'
+import type { PaymentsNetwork } from './cash-in/payments-network.ts'
+import type { CashInRepository } from './cash-in/repository.ts'
 import { ConfiguredRateProvider, type RateProvider } from './pricing/rate-provider.ts'
 import { Mutex } from './shared/mutex.ts'
 import type { Clock, IdGenerator } from './shared/ports.ts'
 import type { GrantGateway } from './store-grant/gateway.ts'
 import type { StoreGrantRepository } from './store-grant/repository.ts'
 import { StoreGrantService } from './store-grant/application/store-grant-service.ts'
+import type { UsdcNetwork } from './treasury/usdc-network.ts'
 
 export interface ComposeOverrides {
   readonly rate?: RateProvider
   readonly grants?: StoreGrantRepository
+  readonly cashIns?: CashInRepository
+  readonly payments?: PaymentsNetwork
+  readonly usdc?: UsdcNetwork
   readonly gateway?: GrantGateway
   readonly clock?: Clock
   readonly ids?: IdGenerator
@@ -32,11 +43,19 @@ export interface AppRuntime {
 }
 
 export function composeApp(config: Config, overrides: ComposeOverrides = {}): AppRuntime {
-  const db = overrides.grants === undefined ? openDatabase(config.database.path) : undefined
+  const db =
+    overrides.grants !== undefined && overrides.cashIns !== undefined
+      ? undefined
+      : openDatabase(config.database.path)
   if (db !== undefined) migrate(db)
   const grants = overrides.grants ?? new SqliteStoreGrantRepository(requireDb(db))
+  const cashIns = overrides.cashIns ?? new SqliteCashInRepository(requireDb(db))
   const clock = overrides.clock ?? { now: () => new Date() }
+  const ids = overrides.ids ?? { next: () => randomUUID() }
+  const mutex = overrides.mutex ?? new Mutex()
   const gateway = overrides.gateway ?? lazyGrantGateway(config)
+  const payments = overrides.payments ?? lazyPayments(config, clock)
+  const usdc = overrides.usdc ?? lazyUsdc(config)
   const rate =
     overrides.rate ??
     new ConfiguredRateProvider(
@@ -50,13 +69,34 @@ export function composeApp(config: Config, overrides: ComposeOverrides = {}): Ap
     grants,
     gateway,
     clock,
-    ids: overrides.ids ?? { next: () => randomUUID() },
-    mutex: overrides.mutex ?? new Mutex(),
+    ids,
+    mutex,
     dailyGrantLimitCop: config.business.dailyGrantLimitCop,
     publicBaseUrl: config.http.publicBaseUrl,
   })
+  const createCashIn = new CreateCashIn({
+    cashIns,
+    payments,
+    usdc,
+    rate,
+    storeGrant,
+    clock,
+    ids,
+    mutex,
+  })
+  const getCashIn = new GetCashIn({ cashIns, clock })
   const logger = loggerFor(config, overrides.logger)
-  const app = buildApp({ logger, rate, storeGrant, webBaseUrl: config.http.webBaseUrl, clock })
+  const app = buildApp({
+    logger,
+    rate,
+    storeGrant,
+    cashIns: {
+      create: (input) => createCashIn.create(input),
+      get: (id) => getCashIn.get(id),
+    },
+    webBaseUrl: config.http.webBaseUrl,
+    clock,
+  })
   return {
     app,
     close: async () => {
@@ -74,6 +114,53 @@ function loggerFor(config: Config, override: ComposeOverrides['logger']): false 
 function requireDb(db: DatabaseSync | undefined): DatabaseSync {
   if (db === undefined) throw new Error('database was not opened')
   return db
+}
+
+function lazyPayments(config: Config, clock: Clock): PaymentsNetwork {
+  let session: Promise<PaymentsNetwork> | undefined
+  const load = (): Promise<PaymentsNetwork> => {
+    session ??= Promise.all([openWalletSession(config.store), openWalletSession(config.operator)])
+      .then(([store, operator]) => createPaymentsNetwork({ store, operator }, clock))
+      .catch((error: unknown) => {
+        session = undefined
+        throw error
+      })
+    return session
+  }
+  return {
+    createIncomingPayment: (input) =>
+      load().then((network) => network.createIncomingPayment(input)),
+    createQuote: (input) => load().then((network) => network.createQuote(input)),
+    createOutgoingPayment: (input) =>
+      load().then((network) => network.createOutgoingPayment(input)),
+    getOutgoingPayment: (id, accessToken) =>
+      load().then((network) => network.getOutgoingPayment(id, accessToken)),
+    getIncomingPayment: (url) => load().then((network) => network.getIncomingPayment(url)),
+    completeIncomingPayment: (url) =>
+      load().then((network) => network.completeIncomingPayment(url)),
+  }
+}
+
+function lazyUsdc(config: Config): UsdcNetwork {
+  let network: UsdcNetwork | undefined
+  const load = (): UsdcNetwork => {
+    network ??= new HorizonUsdcNetwork({
+      horizonUrl: config.stellar.horizonUrl,
+      usdcIssuer: config.stellar.usdcIssuer,
+      operatorSecret: config.stellar.operatorSecret,
+    })
+    return network
+  }
+  return {
+    ensureOperatorReady: () => load().ensureOperatorReady(),
+    balance: () => load().balance(),
+    validateDestination: (address) => load().validateDestination(address),
+    prepareTransfer: (input) => load().prepareTransfer(input),
+    submit: (prepared) => load().submit(prepared),
+    lookup: (txHash) => load().lookup(txHash),
+    refill: (input) => load().refill(input),
+    isEnvelopeDead: (prepared) => load().isEnvelopeDead(prepared),
+  }
 }
 
 function lazyGrantGateway(config: Config): GrantGateway {

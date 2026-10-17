@@ -6,6 +6,7 @@ import {
 } from 'fastify-type-provider-zod'
 import { ZodError } from 'zod'
 
+import { CashInError } from '../../cash-in/application/errors.ts'
 import { DomainError, type DomainErrorCode } from '../../shared/errors.ts'
 import { StoreGrantError } from '../../store-grant/application/errors.ts'
 
@@ -31,6 +32,9 @@ export function installErrorHandler(app: FastifyInstance, webBaseUrl: string): v
     if (isNotFound(error)) return sendApi(reply, 'not_found')
 
     if (error instanceof AppError) return sendApi(reply, error.code, error.detail)
+    if (error instanceof CashInError) {
+      return sendApi(reply, error.code, error.code === 'internal_error' ? undefined : error.detail)
+    }
     if (error instanceof StoreGrantError) {
       return sendApi(reply, fromGrant(error.code), error.message)
     }

@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { createQuoted } from '../../cash-in/domain/cash-in.ts'
 import { money } from '../../shared/money.ts'
 import { SqliteCashInRepository } from './cash-in-repository.ts'
 import { openDatabase } from './database.ts'
@@ -46,24 +45,40 @@ describe('migration 002', () => {
         '2026-10-17T00:00:00.000Z',
         4,
       )
-      const cashIns = new SqliteCashInRepository(db)
-      const quoted = createQuoted(
-        {
-          id: 'cash-1',
-          cop: money(100n, 'COP', 2),
-          usdc: money(1n, 'USDC', 2),
-          copPerUsdc: money(100n, 'COP', 2),
-          expiresAt: new Date('2026-10-17T00:01:00.000Z'),
-          stellarAddress: 'GSTORE',
-          customer: { phone: '300', fullName: 'Ada Lovelace', documentNumber: '123456' },
-          incomingPaymentUrl: 'https://wallet.example.test/incoming/1',
-          quoteId: 'quote-1',
-        },
-        { now: () => new Date('2026-10-17T00:00:00.000Z') },
+      db.prepare(
+        `INSERT INTO cash_ins (
+          id, status, cop_amount, cop_scale, cop_asset, usdc_amount, usdc_scale, usdc_asset,
+          rate_amount, rate_scale, rate_asset, expires_at, stellar_address, memo,
+          customer_phone, customer_full_name, customer_document, incoming_payment_url, quote_id,
+          incoming_completed, created_at, updated_at, version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        'cash-1',
+        'quoted',
+        100,
+        2,
+        'COP',
+        1,
+        2,
+        'USDC',
+        100,
+        2,
+        'COP',
+        '2026-10-17T00:01:00.000Z',
+        'GSTORE',
+        'WALLE-CASH1',
+        '300',
+        'Ada Lovelace',
+        '123456',
+        'https://wallet.example.test/incoming/1',
+        'quote-1',
+        0,
+        '2026-10-17T00:00:00.000Z',
+        '2026-10-17T00:00:00.000Z',
+        1,
       )
-
-      await cashIns.insert(quoted)
       migrate(db)
+      const cashIns = new SqliteCashInRepository(db)
       const grant = await new SqliteStoreGrantRepository(db).get()
       expect(grant).toMatchObject({
         status: 'active',
@@ -77,7 +92,7 @@ describe('migration 002', () => {
       })
       expect((await cashIns.get('cash-1'))?.id).toBe('cash-1')
       const versions = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()
-      expect(versions.map((row) => Number(row.version))).toEqual([1, 2])
+      expect(versions.map((row) => Number(row.version))).toEqual([1, 2, 3])
     } finally {
       db.close()
     }

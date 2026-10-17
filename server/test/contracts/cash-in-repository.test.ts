@@ -134,6 +134,7 @@ describe('sqlite database file', () => {
       expect(db.prepare('SELECT version FROM schema_migrations').all()).toEqual([
         { version: 1n },
         { version: 2n },
+        { version: 3n },
       ])
 
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(

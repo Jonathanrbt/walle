@@ -20,8 +20,19 @@ const storeGrant: Pick<StoreGrantService, 'start' | 'finish' | 'status'> = {
   status: () => Promise.reject(new Error('unused')),
 }
 
+const cashIns = {
+  create: () => Promise.reject(new Error('unused')),
+  get: () => Promise.reject(new Error('unused')),
+}
+
 function build() {
-  return buildApp({ logger: false, rate, storeGrant, webBaseUrl: 'http://localhost:5173' })
+  return buildApp({
+    logger: false,
+    rate,
+    storeGrant,
+    cashIns,
+    webBaseUrl: 'http://localhost:5173',
+  })
 }
 
 describe('buildApp', () => {
