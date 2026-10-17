@@ -127,6 +127,18 @@ Cada tarea: rama `feat/jonatin-backend`, prueba primero, verificación con los c
 - [ ] **B12 Endurecimiento y documentación**: límite de peticiones, manejador de errores uniforme, apagado ordenado (drena el procesador), auditoría de logs sin PII, Stryker sobre `domain/` (umbral acordado en la evidencia), `server/README.md`, `PROJECT.md` (Tecnología y arquitectura + columna «Dónde» del flujo de Open Payments).
   - Acepta: `npm test` completo en verde; puntaje de mutación registrado; ningún secreto en `git grep` con los valores de `.env`.
 
+## Fase 2: conectar `web/` con el backend real
+`web/` es de `andss-ye` (tareas `web-cajero` en `done` y `web-diseno` en `review`; W10 de `web-cajero` es justo este cambio). No se edita sin acuerdo: antes de F1 se agrega a esta tarea la ruta exacta que se toca (mínima, solo configuración de entorno y proxy) y se avisa a `andss-ye`. El cliente HTTP (`web/src/api/http.ts`) ya implementa el contrato; la fase 2 prueba que el backend lo cumple tal cual, sin reescribir pantallas.
+
+- [ ] **F1 Contrato ejecutable**: prueba en `server/test/` que carga `web/src/api/types.ts` solo como lectura (sin editarlo) y verifica con `expectTypeOf` que los esquemas de `packages/contracts` producen los mismos tipos que usa el front; falla si divergen.
+  - Acepta: la prueba falla si se cambia un campo en un lado y no en el otro.
+- [ ] **F2 Arranque conjunto**: script raíz `npm run dev:all` (backend + `web/` con `VITE_API_MOCK=0` y `VITE_API_TARGET=http://localhost:3000`), `server/.env.example` con `WEB_BASE_URL`; verificar que el proxy de Vite reenvía `/api` y que el redirect del final del consentimiento llega a `/tienda?grant=ok|error`.
+  - Acepta: con ambos corriendo, `/tienda` muestra el estado real del `grant` (`missing`) y `/operador` el inventario real.
+- [ ] **F3 Recorrido con navegador contra testnet**: el `grant` diario por la pantalla real de consentimiento, un ingreso de efectivo completo desde la UI (datos → dirección Stellar → billetes → confirmar → comprobante), el pago visto en Freighter y en `/operador`; también los fallos reales: límite excedido, `grant` agotado, cotización vencida, `failed_stellar` + reintentar.
+  - Acepta: evidencia con hash de Stellar, id del `outgoing payment` y capturas; cada fallo con salida en pantalla.
+- [ ] **F4 Cierre con el dueño del front**: PR de las rutas de `web/` tocadas aprobado por `andss-ye`, W10 marcada por su dueño, `web/README.md` apunta a `npm run dev:all`.
+  - Acepta: `npm test` de `web/` y de `server/` en verde en `main`.
+
 ## Bucle de ejecución (orquestador + subagentes)
 Prompt para iniciar o retomar el bucle (por ejemplo con `/loop`):
 
