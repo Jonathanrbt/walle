@@ -7,16 +7,25 @@ import { OperatorError } from '../../../treasury/application/errors.ts'
 import type { OperatorService } from '../../../treasury/application/operator-service.ts'
 import { toCashInDto } from '../cash-in-dto.ts'
 import { AppError } from '../errors.ts'
+import { OPERATOR_DENIED, operatorGuard } from '../operator-auth.ts'
+
+const deniedBody = z.object({
+  error: z.literal(OPERATOR_DENIED.error),
+  detail: z.literal(OPERATOR_DENIED.detail),
+})
 
 export function registerOperatorRoutes(
   app: FastifyInstance,
-  deps: { readonly operator: OperatorService },
+  deps: { readonly operator: OperatorService; readonly operatorToken?: string },
 ): void {
+  const guard =
+    deps.operatorToken === undefined ? {} : { preHandler: operatorGuard(deps.operatorToken) }
   app.get(
     '/api/operator/cash-ins',
     {
+      ...guard,
       schema: {
-        response: { 200: z.array(CashIn) },
+        response: { 200: z.array(CashIn), 401: deniedBody },
       },
     },
     async () => {
@@ -28,8 +37,9 @@ export function registerOperatorRoutes(
   app.get(
     '/api/operator/inventory',
     {
+      ...guard,
       schema: {
-        response: { 200: Inventory },
+        response: { 200: Inventory, 401: deniedBody },
       },
     },
     async () => {
@@ -45,8 +55,9 @@ export function registerOperatorRoutes(
   app.post(
     '/api/operator/inventory/refill',
     {
+      ...guard,
       schema: {
-        response: { 200: RefillResult },
+        response: { 200: RefillResult, 401: deniedBody },
       },
     },
     async () => {

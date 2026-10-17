@@ -31,6 +31,7 @@ export interface BuildAppDeps {
   operator: OperatorService
   webBaseUrl: string
   clock?: Clock
+  operatorToken?: string
 }
 
 export function buildApp(deps: BuildAppDeps) {
@@ -67,9 +68,17 @@ export function buildApp(deps: BuildAppDeps) {
   )
 
   registerRateRoutes(app, deps.rate)
-  registerGrantRoutes(app, { storeGrant: deps.storeGrant, webBaseUrl: deps.webBaseUrl, clock })
+  registerGrantRoutes(app, {
+    storeGrant: deps.storeGrant,
+    webBaseUrl: deps.webBaseUrl,
+    clock,
+    ...(deps.operatorToken === undefined ? {} : { operatorToken: deps.operatorToken }),
+  })
   registerCashInRoutes(app, deps.cashIns)
-  registerOperatorRoutes(app, { operator: deps.operator })
+  registerOperatorRoutes(app, {
+    operator: deps.operator,
+    ...(deps.operatorToken === undefined ? {} : { operatorToken: deps.operatorToken }),
+  })
 
   return app
 }

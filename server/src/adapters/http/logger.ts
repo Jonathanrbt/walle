@@ -7,6 +7,7 @@ export const loggerOptions = {
   redact: {
     paths: [
       'req.headers.authorization',
+      'req.headers["x-operator-token"]',
       '*.privateKey',
       '*.secret',
       '*.accessToken',

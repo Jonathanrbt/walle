@@ -652,6 +652,41 @@ describe('StoreGrantService', () => {
     expect(subject.rotateCalls()).toBe(1)
   })
 
+  it('does not let a late rotation overwrite a newer token that expires sooner', async () => {
+    const subject = rotationFlightHarness()
+    const active = await openActiveGrant(subject, 'ref-sooner')
+    subject.clock.advance(61_000)
+    const hung = subject.service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => subject.timer.armed()).toBe(1)
+    subject.timer.fireOldest()
+    await expect(hung).rejects.toMatchObject({ kind: 'unavailable' })
+
+    const current = await subject.grants.get()
+    if (current === undefined) throw new Error('grant missing')
+    const sooner = new Date(subject.clock.now().getTime() + 1_000)
+    await subject.grants.put(
+      {
+        ...current,
+        accessToken: 'newer-access-token',
+        manageUrl: 'https://grant.invalid/token/sooner',
+        tokenExpiresAt: sooner,
+        updatedAt: subject.clock.now(),
+        version: current.version + 1,
+      },
+      current.version,
+    )
+    subject.settleRotation()
+    await expect
+      .poll(() => subject.events.some((event) => event.name === 'rotation_late_success'))
+      .toBe(true)
+
+    const stored = await subject.grants.get()
+    expect(stored?.accessToken).toBe('newer-access-token')
+    expect(stored?.manageUrl).toBe('https://grant.invalid/token/sooner')
+    expect(stored?.tokenExpiresAt?.toISOString()).toBe(sooner.toISOString())
+    expect(stored?.version).toBe(active.version + 1)
+  })
+
   it('leaves the stored grant when a timed-out rotation fails later', async () => {
     const subject = rotationFlightHarness()
     const active = await openActiveGrant(subject, 'ref-late-fail')

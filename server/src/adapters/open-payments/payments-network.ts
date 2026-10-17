@@ -64,8 +64,9 @@ class GrantTokenCache {
     }
   }
 
-  invalidate(key: string): void {
-    this.#tokens.delete(key)
+  invalidate(key: string, value: string): void {
+    const current = this.#tokens.get(key)
+    if (current?.value === value) this.#tokens.delete(key)
   }
 
   #usable(key: string): string | undefined {
@@ -235,15 +236,14 @@ async function findOutgoingPaymentByQuote(
         if (payment.quoteId === input.quoteId) return { id: payment.id }
       }
       const next = page.pagination.endCursor
-      const more =
-        page.pagination.hasNextPage &&
-        next !== undefined &&
-        page.result.length > 0 &&
-        !seenCursors.has(next)
-      if (stoppedEarly || (scanned >= OUTGOING_LIST_LIMIT && more)) {
+      const claimsMore = page.pagination.hasNextPage
+      const stuck =
+        claimsMore &&
+        (page.result.length === 0 || next === undefined || next === cursor || seenCursors.has(next))
+      if (stoppedEarly || stuck || (scanned >= OUTGOING_LIST_LIMIT && claimsMore)) {
         throw new PaymentsNetworkError('unavailable', 'outgoing payment list exceeded the scan cap')
       }
-      if (!more) return undefined
+      if (!claimsMore || next === undefined) return undefined
       seenCursors.add(next)
       cursor = next
     }
@@ -305,11 +305,15 @@ async function withToken<T>(
   load: () => Promise<GrantValue>,
   use: (accessToken: string) => Promise<T>,
 ): Promise<T> {
+  let used: string | undefined
   try {
-    return await use(await cache.token(key, load))
+    used = await cache.token(key, load)
+    return await use(used)
   } catch (error) {
     if (responseStatus(error) !== 401) throw error
-    cache.invalidate(key)
+    // Only the entry that issued this token. A newer grant for the same
+    // wallet and kind must stay cached.
+    if (used !== undefined) cache.invalidate(key, used)
     return use(await cache.token(key, load))
   }
 }

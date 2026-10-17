@@ -128,6 +128,9 @@ export function composeApp(config: Config, overrides: ComposeOverrides = {}): Ap
     },
     webBaseUrl: config.http.webBaseUrl,
     clock,
+    ...(config.http.operatorToken === undefined
+      ? {}
+      : { operatorToken: config.http.operatorToken }),
   })
   const processor = new SettlementProcessor({
     cashIns,

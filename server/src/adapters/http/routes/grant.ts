@@ -5,6 +5,7 @@ import { formatDecimal } from '../../../shared/money.ts'
 import type { Clock } from '../../../shared/ports.ts'
 import type { StoreGrantService } from '../../../store-grant/application/store-grant-service.ts'
 import { storePage } from '../errors.ts'
+import { OPERATOR_DENIED, tokenMatches } from '../operator-auth.ts'
 
 export function registerGrantRoutes(
   app: FastifyInstance,
@@ -12,6 +13,7 @@ export function registerGrantRoutes(
     readonly storeGrant: Pick<StoreGrantService, 'start' | 'finish' | 'status'>
     readonly webBaseUrl: string
     readonly clock: Clock
+    readonly operatorToken?: string
   },
 ): void {
   app.get(
@@ -34,7 +36,14 @@ export function registerGrantRoutes(
     },
   )
 
-  app.get('/api/grant/start', async (_request, reply) => {
+  app.get('/api/grant/start', async (request, reply) => {
+    if (
+      deps.operatorToken !== undefined &&
+      !tokenMatches(readQuery(request.query, 'token') ?? '', deps.operatorToken)
+    ) {
+      reply.code(401)
+      return OPERATOR_DENIED
+    }
     const result = await deps.storeGrant.start()
     const url = result.kind === 'already_active' ? storePage(deps.webBaseUrl, 'ok') : result.url
     return reply.redirect(url, 302)
