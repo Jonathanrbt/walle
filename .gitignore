@@ -2,6 +2,8 @@
 .env.*
 !.env.example
 node_modules/
+coverage/
+server/data/
 .prompts-pending/
 .codegraph/
 .atl/
