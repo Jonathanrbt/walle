@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "e2e:testnet": "node scripts/e2e-testnet.mjs"
   },
   "dependencies": {
     "@interledger/open-payments": "7.4.0",
