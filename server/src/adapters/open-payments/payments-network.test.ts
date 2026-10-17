@@ -565,7 +565,10 @@ describe('createPaymentsNetwork', () => {
     })
     await expect(
       limited.findOutgoingPaymentByQuote({ quoteId: QUOTE.id, accessToken: 'user-token' }),
-    ).resolves.toBeUndefined()
+    ).rejects.toMatchObject({
+      kind: 'unavailable',
+      detail: 'outgoing payment list exceeded the scan cap',
+    })
     expect(capped).toHaveBeenCalledTimes(2)
   })
 })

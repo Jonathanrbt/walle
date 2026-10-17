@@ -12,6 +12,7 @@ import {
   type PreparedTransfer,
   type UsdcNetwork,
 } from '../../src/treasury/usdc-network.ts'
+import { envelopeIsDead } from '../../src/adapters/stellar/dead-envelope.ts'
 import { TESTNET_PASSPHRASE, TRANSFER_WINDOW_SECONDS } from '../../src/adapters/stellar/envelope.ts'
 
 export interface UsdcNetworkFixture {
@@ -24,6 +25,12 @@ export interface UsdcNetworkFixture {
   addUsdcTrustline(secret: string): Promise<void>
   /** Fake only: the next submit applies the envelope and then reports a timeout. */
   loseNextSubmitResponse?: () => void
+  /**
+   * Fake only: the next `isEnvelopeDead` includes the envelope after the sequence
+   * sample and before the lookup. A real ledger cannot force that window without
+   * a second transaction racing the two reads.
+   */
+  armApplyBetweenDeadReads?: () => void
 }
 
 const ONE_USDC = money(100n, 'USDC', 2)
@@ -175,11 +182,41 @@ export function runUsdcNetworkContract(
       const sent = await fx.network.submit(other)
       expect(sent.kind).toBe('success')
       expect(await fx.network.lookup(original.txHash)).toEqual({ kind: 'not_found' })
-      expect(await fx.network.isEnvelopeDead(original)).toBe(true)
+      expect(await fx.network.isEnvelopeDead(original)).toMatchObject({ dead: true })
       const retry = await fx.network.submit(original)
       expect(retry).toEqual({ kind: 'rejected', code: 'tx_bad_seq' })
       expect((await fx.network.balance()).amount).toBe(before.amount - FIFTH.amount)
     }, 90_000)
+
+    it('does not rebuild when the original transaction lands between the two reads', async (ctx) => {
+      expect(
+        envelopeIsDead({
+          lookup: { kind: 'not_found' },
+          maxTime: 0n,
+          nowSeconds: 0n,
+          accountSequence: 6n,
+          envelopeSequence: 6n,
+        }),
+      ).toBe(true)
+      if (fx.armApplyBetweenDeadReads === undefined || fx.funding === 'blocked') {
+        ctx.skip(fx.funding === 'blocked' ? fx.fundingDetail : 'subject cannot split the two reads')
+        return
+      }
+      const before = await fx.network.balance()
+      const prepared = await fx.network.prepareTransfer({
+        to: ready,
+        amount: TENTH,
+        memo: 'race-window',
+      })
+      fx.armApplyBetweenDeadReads()
+      const verdict = await fx.network.isEnvelopeDead(prepared)
+      expect(verdict.dead).toBe(false)
+      expect(await fx.network.lookup(prepared.txHash)).toMatchObject({ kind: 'success' })
+      expect((await fx.network.balance()).amount).toBe(before.amount - TENTH.amount)
+      const again = await fx.network.submit(prepared)
+      expect(again).toMatchObject({ kind: 'success' })
+      expect((await fx.network.balance()).amount).toBe(before.amount - TENTH.amount)
+    }, 60_000)
   })
 }
 

@@ -47,13 +47,17 @@ const grant: Pick<StoreGrantService, 'withAccessToken'> = {
   withAccessToken: (fn) => fn('grant-token'),
 }
 
-function processor(repo: SqliteCashInRepository, usdc: FakeUsdcNetwork) {
+function processor(
+  repo: SqliteCashInRepository,
+  usdc: FakeUsdcNetwork,
+  clock: ManualClock = new ManualClock(NOW),
+) {
   return new SettlementProcessor({
     cashIns: repo,
     payments,
     usdc,
     storeGrant: grant,
-    clock: new ManualClock(NOW),
+    clock,
     log: silent,
     scheduler: idle,
   })
@@ -174,16 +178,52 @@ describe('settlement crash recovery', () => {
         memo: 'BUMP-1',
       })
       await usdc.submit(bump)
-      expect(await usdc.isEnvelopeDead(prepared)).toBe(true)
+      expect(await usdc.isEnvelopeDead(prepared)).toMatchObject({ dead: true })
 
-      await processor(repo, usdc).runOnce()
+      const clock = new ManualClock(NOW)
+      const running = processor(repo, usdc, clock)
+      await running.runOnce()
+      expect((await repo.get('cash-1'))?.stellarTxHash).toBe(prepared.txHash)
+      clock.advance(15_000)
+      await running.runOnce()
       const rebuilt = await repo.get('cash-1')
       expect(rebuilt?.status).toBe('sending_usdc')
       expect(rebuilt?.stellarTxHash).not.toBe(prepared.txHash)
-      await processor(repo, usdc).runOnce()
+      await running.runOnce()
       expect((await repo.get('cash-1'))?.status).toBe('completed')
       expect(await usdc.balance()).toEqual(money(30_000_000n, 'USDC', 7))
       expect(rebuilt?.memo).toBe(memoFromId('cash-1'))
+    } finally {
+      db.close()
+    }
+  })
+
+  it('pays the original transaction once when it lands during the dead check', async () => {
+    const { usdc, repo, db } = await ledger()
+    try {
+      const { dest } = await destination(usdc)
+      const current = await at(repo, dest, SETTLED)
+      const prepared = await usdc.prepareTransfer({
+        to: dest,
+        amount: USDC,
+        memo: current.memo,
+      })
+      const sending = transition(
+        current,
+        {
+          type: 'UsdcSendStarted',
+          stellarEnvelopeXdr: prepared.envelopeXdr,
+          stellarTxHash: prepared.txHash,
+        },
+        NOW,
+      )
+      await repo.save(sending, current.version)
+      usdc.armApplyBetweenDeadReads()
+      await processor(repo, usdc).runOnce()
+      const done = await repo.get('cash-1')
+      expect(done?.status).toBe('completed')
+      expect(done?.stellarTxHash).toBe(prepared.txHash)
+      expect(await usdc.balance()).toEqual(money(40_000_000n, 'USDC', 7))
     } finally {
       db.close()
     }

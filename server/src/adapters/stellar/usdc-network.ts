@@ -12,6 +12,7 @@ import { money, type Money } from '../../shared/money.ts'
 import {
   StellarError,
   type DestinationCheck,
+  type EnvelopeVerdict,
   type LookupResult,
   type PreparedTransfer,
   type RefillResult,
@@ -30,7 +31,7 @@ import {
   USDC_CODE,
   USDC_SCALE,
 } from './amounts.ts'
-import { envelopeIsDead } from './dead-envelope.ts'
+import { envelopeIsDead, ENVELOPE_DEAD_MARGIN_SECONDS } from './dead-envelope.ts'
 import { readEnvelope, signOperation, TESTNET_PASSPHRASE } from './envelope.ts'
 import { operatorKeypair } from './keys.ts'
 import { Mutex } from './mutex.ts'
@@ -50,6 +51,9 @@ export interface HorizonUsdcNetworkOptions {
   readonly horizonUrl: string
   readonly usdcIssuer: string
   readonly operatorSecret: string
+  readonly now?: () => Date
+  /** Ingest margin after maxTime. Defaults to 30 seconds. */
+  readonly deadMarginSeconds?: number
 }
 
 /**
@@ -62,6 +66,8 @@ export class HorizonUsdcNetwork implements UsdcNetwork {
   private readonly issuer: string
   private readonly signer: ReturnType<typeof operatorKeypair>
   private readonly mutex = new Mutex()
+  private readonly now: () => Date
+  private readonly deadMarginSeconds: bigint
 
   constructor(options: HorizonUsdcNetworkOptions) {
     if (!StrKey.isValidEd25519PublicKey(options.usdcIssuer)) {
@@ -70,6 +76,11 @@ export class HorizonUsdcNetwork implements UsdcNetwork {
     this.server = new Horizon.Server(options.horizonUrl)
     this.issuer = options.usdcIssuer
     this.signer = operatorKeypair(options.operatorSecret)
+    this.now = options.now ?? (() => new Date())
+    this.deadMarginSeconds =
+      options.deadMarginSeconds === undefined
+        ? ENVELOPE_DEAD_MARGIN_SECONDS
+        : BigInt(options.deadMarginSeconds)
   }
 
   async ensureOperatorReady(): Promise<void> {
@@ -214,16 +225,26 @@ export class HorizonUsdcNetwork implements UsdcNetwork {
     })
   }
 
-  async isEnvelopeDead(prepared: PreparedTransfer): Promise<boolean> {
+  async isEnvelopeDead(prepared: PreparedTransfer): Promise<EnvelopeVerdict> {
     const env = readEnvelope(prepared.envelopeXdr)
-    const account = await this.loadOperator()
-    return envelopeIsDead({
-      lookup: await this.lookup(prepared.txHash),
-      maxTime: env.maxTime,
-      nowSeconds: BigInt(Math.floor(Date.now() / 1000)),
-      accountSequence: BigInt(account.sequenceNumber()),
-      envelopeSequence: BigInt(env.sequence),
-    })
+    // Sequence and time are fixed before the lookup. A transaction that consumes
+    // the sequence is included by the time that lookup runs, so `not_found` cannot
+    // be this envelope. Expiry uses the same lookup: it is dead only after maxTime
+    // plus the ingest margin, and only while the hash is still absent.
+    const accountSequence = BigInt((await this.loadOperator()).sequenceNumber())
+    const nowSeconds = BigInt(Math.floor(this.now().getTime() / 1000))
+    const lookup = await this.lookup(prepared.txHash)
+    return {
+      dead: envelopeIsDead({
+        lookup,
+        maxTime: env.maxTime,
+        nowSeconds,
+        accountSequence,
+        envelopeSequence: BigInt(env.sequence),
+        marginSeconds: this.deadMarginSeconds,
+      }),
+      accountSequence: accountSequence.toString(),
+    }
   }
 
   private async loadOperator(): Promise<Horizon.AccountResponse> {

@@ -13,13 +13,17 @@ import {
   USDC_CODE,
   USDC_SCALE,
 } from '../../src/adapters/stellar/amounts.ts'
-import { envelopeIsDead } from '../../src/adapters/stellar/dead-envelope.ts'
+import {
+  envelopeIsDead,
+  ENVELOPE_DEAD_MARGIN_SECONDS,
+} from '../../src/adapters/stellar/dead-envelope.ts'
 import { Mutex } from '../../src/adapters/stellar/mutex.ts'
 import { settleSubmit } from '../../src/adapters/stellar/submit-outcome.ts'
 import { readEnvelope } from '../../src/adapters/stellar/envelope.ts'
 import { money, type Money } from '../../src/shared/money.ts'
 import {
   StellarError,
+  type EnvelopeVerdict,
   type LookupResult,
   type PreparedTransfer,
   type RefillResult,
@@ -77,6 +81,9 @@ export class FakeUsdcNetwork implements UsdcNetwork {
   private fault: SubmitFault | null = null
   private loseResponse = false
   private hideLookup = false
+  private applyBetweenReads = false
+  private now: () => Date = () => new Date()
+  private deadMarginSeconds: bigint = ENVELOPE_DEAD_MARGIN_SECONDS
 
   constructor() {
     this.operator = Keypair.random()
@@ -121,6 +128,18 @@ export class FakeUsdcNetwork implements UsdcNetwork {
     this.hideLookup = true
   }
 
+  /**
+   * The next `isEnvelopeDead` includes this envelope after it has sampled the
+   * account sequence and before it looks the hash up.
+   */
+  armApplyBetweenDeadReads(): void {
+    this.applyBetweenReads = true
+  }
+
+  useNow(now: () => Date): void {
+    this.now = now
+  }
+
   createAccount(): Promise<{ address: string; secret: string }> {
     const keypair = Keypair.random()
     const address = keypair.publicKey()
@@ -155,7 +174,7 @@ export class FakeUsdcNetwork implements UsdcNetwork {
         limit: MAX_LIMIT,
         authorized: true,
       }
-      this.advance(account, prepared.sequence, prepared.txHash, 'success', '')
+      this.advance(account, this.envelopeSequence(prepared), prepared.txHash, 'success', '')
       return Promise.resolve()
     })
   }
@@ -263,21 +282,37 @@ export class FakeUsdcNetwork implements UsdcNetwork {
       )
       account.xlm -= cost + fee
       line.balance += gap
-      this.advance(account, prepared.sequence, prepared.txHash, 'success', '')
+      this.advance(account, this.envelopeSequence(prepared), prepared.txHash, 'success', '')
       return Promise.resolve({ txHash: prepared.txHash, usdc: money(gap, USDC_CODE, USDC_SCALE) })
     })
   }
 
-  async isEnvelopeDead(prepared: PreparedTransfer): Promise<boolean> {
+  async isEnvelopeDead(prepared: PreparedTransfer): Promise<EnvelopeVerdict> {
     const env = readEnvelope(prepared.envelopeXdr)
-    const account = this.requireOperator()
-    return envelopeIsDead({
-      lookup: await this.lookup(prepared.txHash),
-      maxTime: env.maxTime,
-      nowSeconds: BigInt(Math.floor(Date.now() / 1000)),
-      accountSequence: account.sequence,
-      envelopeSequence: BigInt(env.sequence),
-    })
+    // Same order as Horizon: copy the sequence and the clock, then look up.
+    // Applying the envelope between those reads must make the lookup succeed.
+    const accountSequence = this.requireOperator().sequence
+    const nowSeconds = BigInt(Math.floor(this.now().getTime() / 1000))
+    if (this.applyBetweenReads) {
+      this.applyBetweenReads = false
+      this.apply(prepared, null)
+    }
+    const lookup = await this.lookup(prepared.txHash)
+    return {
+      dead: envelopeIsDead({
+        lookup,
+        maxTime: env.maxTime,
+        nowSeconds,
+        accountSequence,
+        envelopeSequence: BigInt(env.sequence),
+        marginSeconds: this.deadMarginSeconds,
+      }),
+      accountSequence: accountSequence.toString(),
+    }
+  }
+
+  private envelopeSequence(prepared: PreparedTransfer): string {
+    return readEnvelope(prepared.envelopeXdr).sequence
   }
 
   private apply(prepared: PreparedTransfer, fault: 'underfunded' | null): SubmitOutcome {
