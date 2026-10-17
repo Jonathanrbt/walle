@@ -59,7 +59,7 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
   - Acepta: `npm run dev` en `web/` sirve las 3 vistas; `npm run build` y `npm test` en verde.
 - [x] **W2 Cliente de API + simulación**: tipos de `team/contracts.md`, cliente `fetch` real y doble simulado con latencias y estados reales (incluidos los fallos forzables por `?fallo=stellar|grant|limite`).
   - Acepta: tests de la máquina de estados simulada (`quoted → settling → settled → sending_usdc → completed` y la rama `failed_stellar` → reintentar).
-- [ ] **W3 Billetera + ranura**: billetera con los 6 billetes, arrastrar a la ranura o clic para insertar, animación de entrada, total en COP con su equivalente en USDC en vivo, deshacer el último, tope del nivel 1 bloqueando billetes que lo excedan.
+- [x] **W3 Billetera + ranura**: billetera con los 6 billetes, arrastrar a la ranura o clic para insertar, animación de entrada, total en COP con su equivalente en USDC en vivo, deshacer el último, tope del nivel 1 bloqueando billetes que lo excedan.
   - Acepta: tests de suma y tope; arrastrar y soltar con teclado y ratón probado en el navegador.
 - [ ] **W4 Captura interactiva de datos**: pantallas de teléfono, nombre y documento con teclado numérico en pantalla; dirección Stellar con «Conectar Freighter» (`@stellar/freighter-api`, red Testnet) o pegar `G…` validado.
   - Acepta: no avanza con datos inválidos; Freighter real devuelve la dirección en Testnet.
@@ -79,11 +79,13 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
 ## Evidencia
 - W1 (2026-10-16): `npm test` 1/1 en verde; `npm run build` en verde (221 kB JS); servidor de desarrollo: `/`, `/tienda`, `/operador` renderizan, navegación interna y botón atrás funcionan, sin errores de consola, sin scroll horizontal a 375 px; `/api/rate` llega al proxy (502 sin backend).
 - W2 (2026-10-16): `npm test` 8/8 en verde (`src/api/mock.test.ts`: recorrido completo, `failed_stellar` → reintentar, cotización vencida, límites de nivel 1, `grant` faltante/forzado/agotado/vencido, dirección inválida, reposición); `npm run build` en verde.
+- W3 (2026-10-16): `npm test` 11/11 en verde (`src/cajero/cash.test.ts`: suma, conversión, tope de 100 USDC, existencias). En el navegador: arrastrar y soltar con `DataTransfer` (2 × 100.000), clic (50.000) y Enter con el foco (2.000) insertan; a 400.000 COP se deshabilitan 20.000/50.000/100.000 con aviso; 412.000 COP = 100.00 USDC llena el medidor; deshacer, continuar y cancelar funcionan; sin scroll horizontal a 375 px; sin errores de consola. Falta probar a mano el arrastre con el ratón físico: el arrastre sintético del navegador de pruebas no dispara eventos HTML5.
 
 ## Progreso
 2026-10-16: reclamo creado; contratos propuestos en `team/contracts.md` (pendientes de acuerdo con quien haga el backend).
 2026-10-16: W1 listo. Vite 8 + React 19 + TS 5.9 + Vitest 5; fuentes del sistema para que la demo funcione sin red; navegación con `history.pushState` para que el estado simulado sobreviva al cambiar de vista.
 2026-10-16: W2 listo. `src/api/` = tipos del contrato, cliente `fetch` y simulación; el estado simulado vive en `sessionStorage` y el estado de cada ingreso se deriva del tiempo desde la confirmación. Fallos forzables: `?fallo=stellar|pago|grant|limite|inventario`. Contrato: se agregan los códigos `grant_exhausted` y `quote_expired`.
+2026-10-16: W3 listo. `src/cajero/` = lógica del efectivo + billetera y zona de soltar; el cajero entero acepta billetes y la ranura anima la entrada. Existencias iniciales de la billetera en `WALLET`. La pantalla `cotizacion` es provisional hasta W5. Por ahora el paso de billetes va justo después de la bienvenida; W4 inserta los datos antes.
 
 ## Siguiente paso
-W3: billetera de billetes + ranura del cajero.
+W4: captura interactiva de datos (teléfono, nombre, documento, dirección Stellar con Freighter o pegada).

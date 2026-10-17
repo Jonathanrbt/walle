@@ -95,3 +95,37 @@ h1 { margin: 0.2em 0; }
   border: 1px solid var(--steel-700);
   border-radius: var(--radius);
 }
+
+.cajero-layout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 32px;
+  margin-top: 24px;
+}
+.cajero-layout .atm { margin: 0; flex: 1 1 360px; }
+.atm-drop .atm-screen { box-shadow: 0 0 0 3px var(--ok); }
+
+.atm-total { font-size: clamp(1.8rem, 6vw, 2.6rem); font-weight: 700; margin: 0.2em 0 0; }
+.atm-total small, .atm-usdc small { font-size: 0.5em; color: var(--screen-dim); }
+.atm-usdc { font-size: 1.4rem; margin: 0.2em 0 0.8em; color: #9cc8ff; }
+.atm-dim { color: var(--screen-dim); font-size: 0.8rem; }
+.atm-bills { list-style: none; padding: 0; margin: 0.6em 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.atm-meter { height: 8px; background: #ffffff1a; border-radius: 4px; overflow: hidden; }
+.atm-meter span { display: block; height: 100%; background: var(--ok); transition: width 0.3s; }
+.atm-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+.atm-btn {
+  font: inherit;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 2px solid var(--screen-ink);
+  background: var(--screen-ink);
+  color: var(--screen-bg);
+  cursor: pointer;
+}
+.atm-btn-ghost { background: transparent; color: var(--screen-ink); }
+.atm-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.atm-btn:focus-visible { outline: 3px solid var(--cop); outline-offset: 2px; }
