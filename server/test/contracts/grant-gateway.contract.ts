@@ -47,6 +47,7 @@ export function runGrantGatewayContract(
       expect(started.continueUri.length).toBeGreaterThan(0)
       expect(started.continueAccessToken.length).toBeGreaterThan(0)
       expect(started.interactNonce.length).toBeGreaterThan(0)
+      expect(started.grantEndpoint.length).toBeGreaterThan(0)
 
       const finished = await grants.finish({
         continueUri: started.continueUri,

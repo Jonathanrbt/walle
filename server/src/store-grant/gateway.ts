@@ -15,6 +15,8 @@ export interface GrantGateway {
     continueAccessToken: string
     /** `interact.finish` from the grant response. Required to verify the redirect hash. */
     interactNonce: string
+    /** Auth server URL the grant was POSTed to. Required to verify the redirect hash. */
+    grantEndpoint: string
     /** Seconds the client must wait before calling the continuation URI. */
     waitSeconds: number
   }>

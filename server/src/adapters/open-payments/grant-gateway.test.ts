@@ -84,6 +84,7 @@ describe('createGrantGateway', () => {
       continueUri: PENDING.continue.uri,
       continueAccessToken: 'continue-token',
       interactNonce: 'as-nonce',
+      grantEndpoint: 'https://auth.example.test/store',
       waitSeconds: 5,
     })
     expect(finished.tokenExpiresAt.toISOString()).toBe('2026-10-17T00:01:00.000Z')

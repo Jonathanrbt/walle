@@ -11,6 +11,8 @@ const COLUMNS = [
   'id',
   'status',
   'nonce',
+  'interact_nonce',
+  'grant_endpoint',
   'continue_uri',
   'continue_access_token',
   'access_token',
@@ -40,6 +42,8 @@ WHERE created_at >= ?
 interface GrantRow {
   readonly status: string
   readonly nonce: string
+  readonly interact_nonce: string
+  readonly grant_endpoint: string
   readonly continue_uri: string
   readonly continue_access_token: string
   readonly access_token: string | null
@@ -111,6 +115,8 @@ function bindings(grant: StoredGrant): SQLInputValue[] {
     1,
     grant.status,
     grant.nonce,
+    grant.interactNonce,
+    grant.grantEndpoint,
     grant.continueUri,
     grant.continueAccessToken,
     grant.accessToken ?? null,
@@ -142,6 +148,8 @@ function mapGrant(row: GrantRow): StoredGrant {
   return {
     status: row.status as StoreGrantStatus,
     nonce: row.nonce,
+    interactNonce: row.interact_nonce,
+    grantEndpoint: row.grant_endpoint,
     continueUri: row.continue_uri,
     continueAccessToken: row.continue_access_token,
     interval: row.interval,

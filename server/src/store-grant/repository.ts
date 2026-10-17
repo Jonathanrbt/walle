@@ -5,6 +5,10 @@ export type StoreGrantStatus = 'pending' | 'active' | 'revoked'
 export interface StoredGrant {
   readonly status: StoreGrantStatus
   readonly nonce: string
+  /** `interact.finish` from the grant response. */
+  readonly interactNonce: string
+  /** Auth server URL the grant was POSTed to. */
+  readonly grantEndpoint: string
   readonly continueUri: string
   readonly continueAccessToken: string
   readonly accessToken?: string

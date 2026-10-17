@@ -24,6 +24,8 @@ function grant(
   return {
     status: overrides.status,
     nonce: overrides.nonce ?? 'nonce-1',
+    interactNonce: overrides.interactNonce ?? 'interact-nonce-1',
+    grantEndpoint: overrides.grantEndpoint ?? 'https://auth.example.test/gnap',
     continueUri: overrides.continueUri ?? 'https://wallet.example.test/continue',
     continueAccessToken: overrides.continueAccessToken ?? 'continue-token',
     interval: overrides.interval ?? 'P1M',
@@ -99,6 +101,8 @@ export function runStoreGrantRepositoryContract(
           status: 'active',
           version: 2,
           nonce: 'nonce-2',
+          interactNonce: 'as-finish',
+          grantEndpoint: 'https://auth.example.test/gnap',
           continueUri: 'https://wallet.example.test/continue/2',
           continueAccessToken: 'continue-secret',
           accessToken: 'access-secret',
@@ -115,6 +119,8 @@ export function runStoreGrantRepositoryContract(
         expect((await grants.get())?.limit?.amount).toBe(HUGE)
         expect((await grants.get())?.continueAccessToken).toBe('continue-secret')
         expect((await grants.get())?.accessToken).toBe('access-secret')
+        expect((await grants.get())?.interactNonce).toBe('as-finish')
+        expect((await grants.get())?.grantEndpoint).toBe('https://auth.example.test/gnap')
 
         const cleared = grant({ status: 'revoked', version: 3, nonce: 'nonce-3' })
         await grants.put(cleared, 2)

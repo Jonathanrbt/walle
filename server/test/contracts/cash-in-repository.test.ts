@@ -98,6 +98,8 @@ describe('sqlite database file', () => {
     const stored: StoredGrant = {
       status: 'pending',
       nonce: 'nonce-reopen',
+      interactNonce: 'interact-nonce-reopen',
+      grantEndpoint: 'https://auth.example.test/gnap',
       continueUri: 'https://wallet.example.test/continue',
       continueAccessToken: 'continue-secret',
       interval: 'P1M',
@@ -129,7 +131,10 @@ describe('sqlite database file', () => {
     try {
       migrate(db)
       migrate(db)
-      expect(db.prepare('SELECT version FROM schema_migrations').all()).toEqual([{ version: 1n }])
+      expect(db.prepare('SELECT version FROM schema_migrations').all()).toEqual([
+        { version: 1n },
+        { version: 2n },
+      ])
 
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
         99,

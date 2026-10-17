@@ -33,6 +33,7 @@ async function start(
   continueUri: string
   continueAccessToken: string
   interactNonce: string
+  grantEndpoint: string
   waitSeconds: number
 }> {
   return attempt(async () => {
@@ -73,6 +74,7 @@ async function start(
       continueUri: grant.continue.uri,
       continueAccessToken: grant.continue.access_token.value,
       interactNonce: grant.interact.finish,
+      grantEndpoint: store.authServer,
       waitSeconds: grant.continue.wait ?? 0,
     }
   })
