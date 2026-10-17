@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.prompts-pending/
+.codegraph/
+.atl/
