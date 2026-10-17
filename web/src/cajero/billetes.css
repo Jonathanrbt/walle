@@ -1,0 +1,87 @@
+/* Stylized notes, not replicas: denomination tint only. */
+.bill {
+  --tint: #888;
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 132px;
+  height: 62px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 78% 50%, #ffffff40 0 16px, transparent 17px),
+    linear-gradient(135deg, var(--tint), color-mix(in srgb, var(--tint) 60%, #000));
+  color: #fff;
+  font-family: var(--font-ui);
+  text-shadow: 0 1px 1px #0006;
+  box-shadow: 0 2px 6px #0007, inset 0 0 0 2px #ffffff30;
+}
+.bill-2000 { --tint: #2f8fb0; }
+.bill-5000 { --tint: #b5803a; }
+.bill-10000 { --tint: #c2434a; }
+.bill-20000 { --tint: #d9772b; }
+.bill-50000 { --tint: #8b4fa6; }
+.bill-100000 { --tint: #3d9a5f; }
+.bill-corner { font-weight: 800; font-size: 0.85rem; }
+.bill-value { font-weight: 800; font-size: 1.05rem; }
+.bill-country { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.85; }
+
+.wallet {
+  flex: 0 1 320px;
+  padding: 20px;
+  background: linear-gradient(160deg, #4a3527, #2e2119);
+  border-radius: 18px;
+  box-shadow: 0 20px 40px #0008, inset 0 1px 0 #ffffff1a;
+}
+.wallet h2 { margin: 0; font-size: 1.1rem; }
+.wallet-hint { margin: 4px 0 14px; color: #d9c3ae; font-size: 0.85rem; }
+.wallet ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.wallet-bill {
+  position: relative;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  transition: transform 0.15s;
+}
+.wallet-bill:hover:not(:disabled) { transform: translateY(-3px) rotate(-1.5deg); }
+.wallet-bill:active:not(:disabled) { cursor: grabbing; }
+.wallet-bill:disabled { cursor: not-allowed; filter: grayscale(0.9); opacity: 0.4; }
+.wallet-bill:focus-visible { outline: 3px solid var(--cop); outline-offset: 3px; border-radius: 6px; }
+.wallet-bill .bill { width: 100%; }
+.wallet-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--steel-900);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.atm-slot { position: relative; overflow: visible; }
+.atm-slot-ready { box-shadow: inset 0 3px 6px #000c, 0 0 0 3px var(--ok); animation: slot-pulse 1.6s ease-in-out infinite; }
+.slot-feed {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform: translateX(-50%);
+  clip-path: inset(0 0 0 0);
+  animation: feed 0.7s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes feed {
+  from { transform: translate(-50%, 70px); opacity: 1; }
+  to { transform: translate(-50%, 0); opacity: 0; clip-path: inset(0 0 100% 0); }
+}
+@keyframes slot-pulse {
+  50% { box-shadow: inset 0 3px 6px #000c, 0 0 0 3px #3ccf9155; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slot-feed, .atm-slot-ready { animation: none; }
+  .slot-feed { display: none; }
+}
