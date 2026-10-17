@@ -63,15 +63,15 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
   - Acepta: tests de suma y tope; arrastrar y soltar con teclado y ratón probado en el navegador.
 - [x] **W4 Captura interactiva de datos**: pantallas de teléfono, nombre y documento con teclado numérico en pantalla; dirección Stellar con «Conectar Freighter» (`@stellar/freighter-api`, red Testnet) o pegar `G…` validado.
   - Acepta: no avanza con datos inválidos; Freighter real devuelve la dirección en Testnet.
-- [ ] **W5 Cotización y confirmación**: `POST /api/cash-ins` → COP entregados, tasa, USDC a recibir, vencimiento con cuenta regresiva; confirmar o cancelar.
+- [x] **W5 Cotización y confirmación**: `POST /api/cash-ins` → COP entregados, tasa, USDC a recibir, vencimiento con cuenta regresiva; confirmar o cancelar.
   - Acepta: la cotización vencida obliga a recotizar; cancelar lleva a «retire sus billetes».
-- [ ] **W6 Línea de tiempo de Open Payments + recibo**: 4 fases con nombre visible (solicitud, autorización, ejecución, finalización) + «USDC enviado a tu billetera», sondeo de `GET /api/cash-ins/:id`, recibo con montos, `memo` y enlace a la transacción en testnet.
+- [x] **W6 Línea de tiempo de Open Payments + recibo**: 4 fases con nombre visible (solicitud, autorización, ejecución, finalización) + «USDC enviado a tu billetera», sondeo de `GET /api/cash-ins/:id`, recibo con montos, `memo` y enlace a la transacción en testnet.
   - Acepta: cada fase cambia según la respuesta (simulada o real), no con temporizadores propios del front.
-- [ ] **W7 Vista Tienda (`grant` diario)**: estado, límite, gastado y vencimiento; «Autorizar el día» → `/api/grant/start` → vuelve a `/tienda?grant=ok|error`. En simulación, una página falsa de consentimiento.
+- [x] **W7 Vista Tienda (`grant` diario)**: estado, límite, gastado y vencimiento; «Autorizar el día» → `/api/grant/start` → vuelve a `/tienda?grant=ok|error`. En simulación, una página falsa de consentimiento.
   - Acepta: sin `grant`, el cajero muestra «fuera de servicio» con un enlace a la tienda; con `grant`, vuelve a `idle`.
-- [ ] **W8 Vista Operador**: tabla de pagos liquidados (sondeo), inventario de USDC con umbral y botón Reponer.
+- [x] **W8 Vista Operador**: tabla de pagos liquidados (sondeo), inventario de USDC con umbral y botón Reponer.
   - Acepta: un ingreso de efectivo completado aparece en la tabla y descuenta el inventario.
-- [ ] **W9 Errores y respaldo de la demo**: límite excedido, cotización vencida, `grant` vencido o agotado en mitad del flujo, pendiente de Stellar + reintentar, backend caído.
+- [x] **W9 Errores y respaldo de la demo**: límite excedido, cotización vencida, `grant` vencido o agotado en mitad del flujo, pendiente de Stellar + reintentar, backend caído.
   - Acepta: cada fallo forzado de W2 tiene una pantalla con salida y ninguno deja al cajero colgado.
 - [ ] **W10 Cambio al backend real y pulido**: `VITE_API_MOCK=0` contra el backend del equipo, ancho de teléfono/kiosko, contraste y foco, recorrido de la demo en menos de 90 s.
   - Acepta: un ingreso de efectivo de punta a punta en testnet visto en Freighter (evidencia: hash + captura).
@@ -81,12 +81,15 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
 - W2 (2026-10-16): `npm test` 8/8 en verde (`src/api/mock.test.ts`: recorrido completo, `failed_stellar` → reintentar, cotización vencida, límites de nivel 1, `grant` faltante/forzado/agotado/vencido, dirección inválida, reposición); `npm run build` en verde.
 - W3 (2026-10-16): `npm test` 11/11 en verde (`src/cajero/cash.test.ts`: suma, conversión, tope de 100 USDC, existencias). En el navegador: arrastrar y soltar con `DataTransfer` (2 × 100.000), clic (50.000) y Enter con el foco (2.000) insertan; a 400.000 COP se deshabilitan 20.000/50.000/100.000 con aviso; 412.000 COP = 100.00 USDC llena el medidor; deshacer, continuar y cancelar funcionan; sin scroll horizontal a 375 px; sin errores de consola. Falta probar a mano el arrastre con el ratón físico: el arrastre sintético del navegador de pruebas no dispara eventos HTML5.
 - W4 (2026-10-16): `src/cajero/validate.test.ts` 2/2. En el navegador: el teclado en pantalla solo habilita OK con 10 dígitos que empiezan por 3; el nombre exige nombre y apellido; la cédula filtra lo que no son dígitos; la dirección `gabc` se rechaza y una `G…` válida muestra «Enviaremos a GBRPYH…C7OX2H»; Atrás conserva los datos; sin la extensión, «Conectar Freighter» avisa a los ~2 s y deja pegar. Falta probar con Freighter instalado (Testnet).
+- W5–W9 (2026-10-16): `npm test` 15/15 (`phases.test.ts`: estado de cada fase por status y por fallo). En el navegador con la API simulada: sin `grant` el cajero queda «fuera de servicio»; Tienda → consentimiento simulado → Aceptar → `/tienda?grant=ok`, «Activa, $0 / $2.000.000»; ingreso de 110.000 COP → cotización 26.69 USDC con 60 s → fases `ddapp` → `dddda` → completado → comprobante con memo y hash; `?fallo=stellar` deja la fase 5 en error y «Reintentar envío» la completa; `pago` → fase 3 en error → devolución; `limite` e `inventario` → pantalla de rechazo → devolución; `grant` → fuera de servicio, y se recupera solo al quitar el fallo; la cotización vencida muestra «Recotizar» y genera una nueva; Operador: fila «Completado», inventario 975.73 → «Reponer» → 1000.00. Sin scroll horizontal a 375 px en las tres vistas.
+- W10 parcial (2026-10-16): con `VITE_API_MOCK=0` y sin backend, el cajero muestra «Sin conexión… Reintentando». Contra un backend de prueba del contrato (fuera del repo, en :3000): el redirect `/api/grant/start` → `/api/grant/finish` → `/tienda?grant=ok` funciona a través del proxy, un ingreso de 50.000 COP llega al comprobante y el Operador lo lista. Falta el backend real del equipo en testnet y Freighter.
 
 ## Progreso
 2026-10-16: reclamo creado; contratos propuestos en `team/contracts.md` (pendientes de acuerdo con quien haga el backend).
 2026-10-16: W1 listo. Vite 8 + React 19 + TS 5.9 + Vitest 5; fuentes del sistema para que la demo funcione sin red; navegación con `history.pushState` para que el estado simulado sobreviva al cambiar de vista.
 2026-10-16: W2 listo. `src/api/` = tipos del contrato, cliente `fetch` y simulación; el estado simulado vive en `sessionStorage` y el estado de cada ingreso se deriva del tiempo desde la confirmación. Fallos forzables: `?fallo=stellar|pago|grant|limite|inventario`. Contrato: se agregan los códigos `grant_exhausted` y `quote_expired`.
 2026-10-16: W3 listo. `src/cajero/` = lógica del efectivo + billetera y zona de soltar; el cajero entero acepta billetes y la ranura anima la entrada. Existencias iniciales de la billetera en `WALLET`. La pantalla `cotizacion` es provisional hasta W5. Por ahora el paso de billetes va justo después de la bienvenida; W4 inserta los datos antes.
+2026-10-16: W5–W9 listos. Las fases se derivan del `status` del backend (`src/cajero/phases.ts`), no de temporizadores del front. Después de Confirmar nunca se ofrece devolver billetes, salvo `failed_payment`. El estado simulado pasó de `sessionStorage` a `localStorage` para ver cajero y operador en dos pestañas; `?reiniciar=1` lo borra. El consentimiento simulado imita la pantalla de la billetera de testnet. Guía de uso y guion de la demo en `web/README.md`.
 
 ## Siguiente paso
-W4: captura interactiva de datos (teléfono, nombre, documento, dirección Stellar con Freighter o pegada).
+W10: conectar con el backend real del equipo cuando exista (`VITE_API_MOCK=0`), probar Freighter en Testnet y guardar como evidencia el hash de una transacción real.
