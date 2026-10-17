@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { apiMock } from './config'
+import { Logo } from './iso/scenes'
 import { links, viewFor } from './routes'
 import { Cajero } from './views/Cajero'
 import { Operador } from './views/Operador'
@@ -29,7 +30,10 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">walle</span>
+        <span className="brand">
+          <Logo />
+          walle
+        </span>
         <nav>
           {links.map((l) => (
             <a

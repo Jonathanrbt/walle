@@ -58,7 +58,7 @@ La UI actual (W1–W9 de `web-cajero.md`) es funcional, pero parece una pantalla
 | Archivo | Responsabilidad |
 |---|---|
 | `web/src/iso/iso.ts` (+ `iso.test.ts`) | Proyección isométrica y geometría de cajas y cilindros |
-| `web/src/iso/Iso.tsx` | Componentes SVG: `IsoSvg`, `IsoBox`, `IsoCylinder`, `IsoPoly` |
+| `web/src/iso/shapes.tsx` | Componentes SVG: `IsoSvg`, `IsoBox`, `IsoCylinder`, `IsoPoly` |
 | `web/src/iso/scenes.tsx` | Escenas: `Logo`, `AtmScene`, `StoreScene`, `ServerScene`, `PhaseCube` |
 | `web/src/styles.css` | Tokens, shell y componentes base (reescrito) |
 | `web/src/cajero/cash.ts` (+ test) | `BILL_DESIGN`: color, palabras y largo de cada billete |
@@ -70,7 +70,7 @@ La UI actual (W1–W9 de `web-cajero.md`) es funcional, pero parece una pantalla
 ## Tareas
 
 ### D1 — Primitivas isométricas
-**Archivos:** crear `web/src/iso/iso.ts`, `web/src/iso/iso.test.ts` y `web/src/iso/Iso.tsx`.
+**Archivos:** crear `web/src/iso/iso.ts`, `web/src/iso/iso.test.ts` y `web/src/iso/shapes.tsx`.
 
 **Interfaces que produce:**
 - `type Vec3 = [number, number, number]`
@@ -93,7 +93,7 @@ Los tonos se aplican con las clases `iso-plain` y similares, definidas en `style
   - `box(...).right` incluye `iso(1,1,0)` (`'0,1'`).
   - `cylinder(0,0,0,1,2)` da `rx` ≈ 1.2247, `ry` ≈ 0.7071, `topY` = −2 y `bottomY` = 0.
 - [ ] **D1.2** `npm test`: falla porque falta el módulo.
-- [ ] **D1.3** Implementar `iso.ts` e `Iso.tsx` (`IsoCylinder` es un path con el lado y el arco inferior, más una elipse superior).
+- [ ] **D1.3** Implementar `iso.ts` y `shapes.tsx` (`IsoCylinder` es un path con el lado y el arco inferior, más una elipse superior).
 - [ ] **D1.4** `npm test`: pasa.
 - [ ] **D1.5** Commit: `feat: ✨ add isometric drawing primitives`.
 
