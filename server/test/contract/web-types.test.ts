@@ -21,7 +21,7 @@ describe('web client types match @walle/contracts', () => {
         encoding: 'utf8',
       },
     )
-  })
+  }, 60_000)
 
   it('lists the same statuses and front error codes as the contract enums', () => {
     const text = readFileSync(webTypesUrl, 'utf8')

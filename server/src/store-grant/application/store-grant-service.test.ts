@@ -325,6 +325,24 @@ describe('StoreGrantService', () => {
     })
   })
 
+  it('enforces the configured daily cap when the consented grant allows more', async () => {
+    const subject = harness()
+    await activate(subject)
+    const stored = await subject.grants.get()
+    if (stored === undefined) throw new Error('grant was not stored')
+    await subject.grants.put(
+      { ...stored, limit: money(1_000_000n, 'COP', 2), version: stored.version + 1 },
+      stored.version,
+    )
+
+    const status = await subject.service.status(subject.clock.now())
+    expect(status.limit).toEqual(money(10_000n, 'COP', 2))
+    await expect(subject.service.assertCapacity(money(10_000n, 'COP', 2))).resolves.toBeUndefined()
+    await expect(subject.service.assertCapacity(money(10_001n, 'COP', 2))).rejects.toMatchObject({
+      code: 'grant_exhausted',
+    })
+  })
+
   it('rejects a grant whose interval is not a one-day window', async () => {
     const subject = harness()
     await activate(subject)

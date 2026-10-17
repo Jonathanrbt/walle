@@ -103,9 +103,11 @@ export class StoreGrantService {
     const spent = await this.#grants.spentSince(
       currentIntervalStart(anchorOf(current.interval), now),
     )
+    // The consented grant may allow more than we want to spend: never exceed the configured cap.
+    const cap = parseDecimal(this.#dailyGrantLimitCop, 'COP', 2)
     return {
       status: 'active',
-      limit: current.limit,
+      limit: compare(current.limit, cap) > 0 ? cap : current.limit,
       spent,
       expiresAt: current.grantExpiresAt,
     }
