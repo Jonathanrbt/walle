@@ -9,8 +9,7 @@ export const iso = (x: number, y: number, z = 0): [number, number] => [(x - y) *
 const round = (n: number) => String(+n.toFixed(2))
 
 /** SVG `points` attribute for world points. */
-export const points = (...p: Vec3[]) =>
-  p.map(([x, y, z]) => iso(x, y, z).map(round).join(',')).join(' ')
+export const points = (...p: Vec3[]) => p.map(([x, y, z]) => iso(x, y, z).map(round).join(',')).join(' ')
 
 /** Visible faces of a box: top, left (y = y + d) and right (x = x + w). */
 export function box(x: number, y: number, z: number, w: number, d: number, h: number) {

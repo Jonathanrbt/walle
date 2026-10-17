@@ -1,61 +1,131 @@
-.bn { display: block; height: auto; filter: drop-shadow(0 1px 1px #0003); }
+/* Banknotes, wallet stacks and the cashier slot. */
+:root { --note-w: 140px; }
+.bn { display: block; height: auto; }
 .bn-text { font-family: var(--font-ui); }
 
 .wallet {
-  flex: 0 1 320px;
-  padding: 20px;
-  background: linear-gradient(160deg, #4a3527, #2e2119);
-  border-radius: 18px;
-  box-shadow: 0 20px 40px #0008, inset 0 1px 0 #ffffff1a;
+  flex: 0 1 340px;
+  padding: 22px 20px 24px;
+  background: var(--paper);
+  border: var(--stroke) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: 8px 8px 0 -1px var(--face-2), 8px 8px 0 0 var(--ink);
+  animation: rise 320ms var(--ease) both;
 }
-.wallet h2 { margin: 0; font-size: 1.1rem; }
-.wallet-hint { margin: 4px 0 14px; color: #d9c3ae; font-size: 0.85rem; }
-.wallet ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.wallet-bill {
+.wallet h2 { margin: 0; font-size: 1.05rem; }
+.wallet-hint { margin: 4px 0 18px; color: var(--ink-2); font-size: 0.85rem; }
+.wallet ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, var(--note-w)); gap: 22px 14px; justify-content: center; }
+
+/* A stack shows up to three notes; lower ones peek out with a slight skew. */
+.wallet-stack {
   position: relative;
-  width: 100%;
+  display: block;
+  width: var(--note-w);
+  height: calc(var(--note-w) * 0.47);
   padding: 0;
   border: 0;
   background: none;
   cursor: grab;
-  transition: transform 0.15s;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.wallet-bill:hover:not(:disabled) { transform: translateY(-3px) rotate(-1.5deg); }
-.wallet-bill:active:not(:disabled) { cursor: grabbing; }
-.wallet-bill:disabled { cursor: not-allowed; filter: grayscale(0.9); opacity: 0.4; }
-.wallet-bill:focus-visible { outline: 3px solid var(--cop); outline-offset: 3px; border-radius: 6px; }
-.slot-feed .bn { width: 150px; }
+.wallet-note {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--len) * var(--note-w));
+  transform: translate(calc(var(--d) * 2px), calc(var(--d) * 3px)) rotate(calc(var(--d) * -1.6deg));
+  filter: drop-shadow(0 1px 0 #0002);
+  transition: transform var(--dur) var(--ease), filter var(--dur) var(--ease);
+}
+.wallet-stack:hover:not(:disabled) .wallet-note:last-of-type,
+.wallet-stack:focus-visible .wallet-note:last-of-type {
+  transform: translateY(-4px) rotate(-1deg);
+  filter: drop-shadow(0 6px 6px #0002);
+}
+.wallet-stack:active { cursor: grabbing; }
+.wallet-stack:disabled { cursor: default; height: calc(var(--note-w) * 0.43); border: var(--stroke) dashed var(--face-3); border-radius: 4px; width: calc(var(--len) * var(--note-w)); }
+.wallet-stack:focus-visible { outline: 2px solid var(--signal); outline-offset: 6px; border-radius: 4px; }
 .wallet-count {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: -10px;
+  right: -8px;
   padding: 1px 7px;
+  border: var(--stroke) solid var(--ink);
   border-radius: 999px;
-  background: var(--steel-900);
+  background: var(--paper);
   color: var(--ink);
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+}
+.wallet-stack:disabled .wallet-count { color: var(--ink-3); border-color: var(--face-3); }
+
+/* Note held by the pointer: lifted above everything, pivoting on the grab point. */
+.bill-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  will-change: transform;
+  filter: drop-shadow(0 14px 12px #0003);
 }
 
-.atm-slot { position: relative; overflow: visible; }
-.atm-slot-ready { box-shadow: inset 0 3px 6px #000c, 0 0 0 3px var(--ok); animation: slot-pulse 1.6s ease-in-out infinite; }
+/* Slot */
+.atm-tray { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 18px; }
+.atm-tray-label { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.atm-slot {
+  position: relative;
+  width: 72%;
+  height: 12px;
+  background: var(--ink);
+  border-radius: 6px;
+  box-shadow: 0 0 0 5px var(--paper), 0 0 0 6.25px var(--ink);
+}
+.atm-slot::after {
+  content: '';
+  position: absolute;
+  right: -22px;
+  top: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--face-3);
+}
+.atm-slot-ready::after { background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+
+/* The note slides down through the slot line while being clipped at it. */
 .slot-feed {
   position: absolute;
   left: 50%;
   bottom: 50%;
+  width: calc(var(--len) * var(--note-w));
   transform: translateX(-50%);
-  clip-path: inset(0 0 0 0);
-  animation: feed 0.7s ease-in forwards;
   pointer-events: none;
+  animation: feed 600ms cubic-bezier(0.5, 0, 0.75, 0) forwards;
 }
 @keyframes feed {
-  from { transform: translate(-50%, 70px); opacity: 1; }
-  to { transform: translate(-50%, 0); opacity: 0; clip-path: inset(0 0 100% 0); }
+  from { transform: translate(-50%, 0); clip-path: inset(0 0 0 0); }
+  to { transform: translate(-50%, 100%); clip-path: inset(0 0 100% 0); }
 }
-@keyframes slot-pulse {
-  50% { box-shadow: inset 0 3px 6px #000c, 0 0 0 3px #3ccf9155; }
+.slot-reject {
+  position: absolute;
+  inset: -6px;
+  border-radius: 10px;
+  pointer-events: none;
+  animation: reject 900ms var(--ease) forwards;
+}
+@keyframes reject {
+  0%, 60% { box-shadow: 0 0 0 2px var(--danger); }
+  to { box-shadow: 0 0 0 2px transparent; }
+}
+
+/* Phones: the wallet docks at the bottom so the slot and the notes share the screen. */
+@media (max-width: 640px) {
+  :root { --note-w: 92px; }
+  .wallet { position: sticky; bottom: 8px; z-index: 5; flex-basis: 100%; padding: 12px 12px 14px; }
+  .wallet h2 { font-size: 0.9rem; }
+  .wallet-hint { margin: 2px 0 12px; font-size: 0.75rem; }
+  .wallet ul { grid-template-columns: repeat(3, var(--note-w)); gap: 16px 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .slot-feed, .atm-slot-ready { animation: none; }
   .slot-feed { display: none; }
 }

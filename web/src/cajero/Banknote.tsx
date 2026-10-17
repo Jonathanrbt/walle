@@ -4,13 +4,22 @@ import { BILL_DESIGN, BILL_HEIGHT_MM as H, type Bill } from './cash'
 /** Mixes a #rrggbb color toward another by t (0..1). */
 function mix(a: string, b: string, t: number) {
   const ch = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16)
-  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, '0')).join('')}`
+  return `#${[0, 1, 2]
+    .map((i) =>
+      Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`
 }
 
 /** Wavy security line across the note. */
 const wave = (len: number, y: number, amp: number, period: number, phase = 0) =>
   'M' +
-  Array.from({ length: Math.ceil(len) + 1 }, (_, x) => `${x},${(y + amp * Math.sin(x / period + phase)).toFixed(2)}`).join(' L')
+  Array.from(
+    { length: Math.ceil(len) + 1 },
+    (_, x) => `${x},${(y + amp * Math.sin(x / period + phase)).toFixed(2)}`,
+  ).join(' L')
 
 /**
  * Colombian-style banknote drawn in SVG, sized to the real note's proportions.
@@ -38,7 +47,17 @@ export function Banknote({ bill, className }: { bill: Bill; className?: string }
       </defs>
 
       <rect width={L} height={H} rx={2.5} fill={`url(#${id}g)`} stroke={deep} strokeWidth={0.5} />
-      <rect x={2} y={2} width={L - 4} height={H - 4} rx={1.5} fill="none" stroke="#fff" strokeOpacity={0.55} strokeWidth={0.4} />
+      <rect
+        x={2}
+        y={2}
+        width={L - 4}
+        height={H - 4}
+        rx={1.5}
+        fill="none"
+        stroke="#fff"
+        strokeOpacity={0.55}
+        strokeWidth={0.4}
+      />
 
       <g fill="none" stroke="#fff" strokeOpacity={0.4} strokeWidth={0.3}>
         {Array.from({ length: 7 }, (_, i) => (
