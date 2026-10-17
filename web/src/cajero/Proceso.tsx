@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError, type CashIn } from '../api'
 import { apiMock } from '../config'
+import { PhaseCube } from '../iso/scenes'
 import { formatCop } from './cash'
 import { isTerminal, phases } from './phases'
 import { shortAddress } from './validate'
@@ -110,13 +111,13 @@ export function ProcessingScreen({
 
   return (
     <>
-      <p className="atm-kicker">Procesando · {cop(cashIn.copAmount)} COP → {cashIn.usdcAmount} USDC</p>
+      <p className="atm-kicker">
+        Procesando · {cop(cashIn.copAmount)} COP → {cashIn.usdcAmount} USDC
+      </p>
       <ol className="timeline">
-        {phases(cashIn).map((p, i) => (
+        {phases(cashIn).map((p) => (
           <li key={p.key} className={`phase phase-${p.state}`} aria-current={p.state === 'active' ? 'step' : undefined}>
-            <span className="phase-dot" aria-hidden="true">
-              {p.state === 'done' ? '✓' : p.state === 'error' ? '!' : i + 1}
-            </span>
+            <PhaseCube state={p.state} />
             <span>
               <strong>{p.label}</strong>
               <small>{p.detail}</small>
@@ -168,30 +169,36 @@ export function Receipt({ cashIn, onFinish }: { cashIn: CashIn; onFinish: () => 
   const done = cashIn.status === 'completed'
   return (
     <>
-      <p className="atm-kicker">Comprobante</p>
-      <h1 className={done ? 'atm-ok' : 'atm-notice'}>{done ? '¡Listo! Tus USDC llegaron' : 'USDC pendientes de envío'}</h1>
-      <dl className="atm-quote">
-        <dt>Entregaste</dt>
-        <dd>{cop(cashIn.copAmount)} COP</dd>
-        <dt>Recibiste</dt>
-        <dd className="atm-quote-usdc">{cashIn.usdcAmount} USDC</dd>
-        <dt>Billetera</dt>
-        <dd>{shortAddress(cashIn.stellarAddress)}</dd>
-        <dt>Memo</dt>
-        <dd>{cashIn.memo}</dd>
-        <dt>Operación</dt>
-        <dd>{cashIn.id.slice(0, 8)}</dd>
-      </dl>
-      {cashIn.stellarTxHash && (
+      <div className="ticket">
+        <p className="atm-kicker">Comprobante</p>
+        <h1 className={done ? 'atm-ok' : 'atm-notice'}>
+          {done ? '¡Listo! Tus USDC llegaron' : 'USDC pendientes de envío'}
+        </h1>
+        <dl className="atm-quote">
+          <dt>Entregaste</dt>
+          <dd>{cop(cashIn.copAmount)} COP</dd>
+          <dt>Recibiste</dt>
+          <dd className="atm-quote-usdc">{cashIn.usdcAmount} USDC</dd>
+          <dt>Billetera</dt>
+          <dd>{shortAddress(cashIn.stellarAddress)}</dd>
+          <dt>Memo</dt>
+          <dd>{cashIn.memo}</dd>
+          <dt>Operación</dt>
+          <dd>{cashIn.id.slice(0, 8)}</dd>
+        </dl>
+        {cashIn.stellarTxHash && (
+          <p className="atm-dim">
+            Transacción:{' '}
+            <a className="atm-link" href={stellarTxUrl(cashIn.stellarTxHash)} target="_blank" rel="noreferrer">
+              {cashIn.stellarTxHash.slice(0, 12)}…
+            </a>
+            {apiMock && ' (simulada)'}
+          </p>
+        )}
         <p className="atm-dim">
-          Transacción:{' '}
-          <a className="atm-link" href={stellarTxUrl(cashIn.stellarTxHash)} target="_blank" rel="noreferrer">
-            {cashIn.stellarTxHash.slice(0, 12)}…
-          </a>
-          {apiMock && ' (simulada)'}
+          {done ? 'Ábrelos en Freighter (Testnet).' : 'Guarda este comprobante: el operador reintentará el envío.'}
         </p>
-      )}
-      <p className="atm-dim">{done ? 'Ábrelos en Freighter (Testnet).' : 'Guarda este comprobante: el operador reintentará el envío.'}</p>
+      </div>
       <div className="atm-actions">
         <button type="button" className="atm-btn" onClick={onFinish}>
           Terminar

@@ -1,5 +1,16 @@
 import { expect, test } from 'vitest'
-import { fits, formatCop, formatUsdc, grouped, remaining, total, usdcCents, type Bill } from './cash'
+import {
+  BILL_DESIGN,
+  DENOMINATIONS,
+  fits,
+  formatCop,
+  formatUsdc,
+  grouped,
+  remaining,
+  total,
+  usdcCents,
+  type Bill,
+} from './cash'
 
 const RATE = 4120
 
@@ -25,4 +36,9 @@ test('tracks wallet stock and groups inserted bills', () => {
     { bill: 2000, count: 1 },
     { bill: 100000, count: 2 },
   ])
+})
+
+test('BILL_DESIGN covers every denomination with growing length', () => {
+  expect(DENOMINATIONS.map((d) => BILL_DESIGN[d].lengthMm)).toEqual([128, 133, 138, 143, 148, 153])
+  expect(BILL_DESIGN[50000].words).toBe('CINCUENTA MIL PESOS')
 })
