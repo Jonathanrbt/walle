@@ -12,10 +12,11 @@ Respuesta: `{ copPerUsdc: string, spreadPct: number, quotedAt: string }`. `copPe
 ### POST /api/cash-ins
 Solicitud: `{ copAmount: string, stellarAddress: string, customer: { phone: string, fullName: string, documentNumber: string } }`
 Respuesta 201: `CashIn` en `status: "quoted"` (crea el `incoming payment` del operador y el `quote` del cajero).
-Errores 4xx: `{ error: "limit_exceeded" | "no_grant" | "invalid_address" | "insufficient_inventory", detail?: string }`
+Errores 4xx: `ApiError` con `"limit_exceeded" | "no_grant" | "grant_exhausted" | "invalid_address" | "insufficient_inventory"`
 
 ### POST /api/cash-ins/:id/confirm
 Respuesta 202: `CashIn` en `status: "settling"` (crea el `outgoing payment` con el `grant` diario).
+Errores 4xx: `ApiError` con `"quote_expired" | "no_grant" | "grant_exhausted"`.
 
 ### POST /api/cash-ins/:id/retry
 Respuesta 202: `CashIn`. Solo válido en `failed_stellar`.
@@ -34,6 +35,8 @@ type CashIn = {
   stellarTxHash?: string
   createdAt: string
 }
+
+type ApiError = { error: string; detail?: string }
 ```
 
 ### GET /api/grant

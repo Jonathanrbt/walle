@@ -57,7 +57,7 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
 ## Tareas
 - [x] **W1 Base de `web/`**: Vite + React + TS, proxy `/api` en desarrollo, `VITE_API_MOCK`, rutas `/`, `/tienda` y `/operador` sin librería de router, layout y tokens de color del cajero.
   - Acepta: `npm run dev` en `web/` sirve las 3 vistas; `npm run build` y `npm test` en verde.
-- [ ] **W2 Cliente de API + simulación**: tipos de `team/contracts.md`, cliente `fetch` real y doble simulado con latencias y estados reales (incluidos los fallos forzables por `?fallo=stellar|grant|limite`).
+- [x] **W2 Cliente de API + simulación**: tipos de `team/contracts.md`, cliente `fetch` real y doble simulado con latencias y estados reales (incluidos los fallos forzables por `?fallo=stellar|grant|limite`).
   - Acepta: tests de la máquina de estados simulada (`quoted → settling → settled → sending_usdc → completed` y la rama `failed_stellar` → reintentar).
 - [ ] **W3 Billetera + ranura**: billetera con los 6 billetes, arrastrar a la ranura o clic para insertar, animación de entrada, total en COP con su equivalente en USDC en vivo, deshacer el último, tope del nivel 1 bloqueando billetes que lo excedan.
   - Acepta: tests de suma y tope; arrastrar y soltar con teclado y ratón probado en el navegador.
@@ -78,10 +78,12 @@ procesando ─(stellar falla)─▶ pendiente_stellar ─(reintentar)─▶ proc
 
 ## Evidencia
 - W1 (2026-10-16): `npm test` 1/1 en verde; `npm run build` en verde (221 kB JS); servidor de desarrollo: `/`, `/tienda`, `/operador` renderizan, navegación interna y botón atrás funcionan, sin errores de consola, sin scroll horizontal a 375 px; `/api/rate` llega al proxy (502 sin backend).
+- W2 (2026-10-16): `npm test` 8/8 en verde (`src/api/mock.test.ts`: recorrido completo, `failed_stellar` → reintentar, cotización vencida, límites de nivel 1, `grant` faltante/forzado/agotado/vencido, dirección inválida, reposición); `npm run build` en verde.
 
 ## Progreso
 2026-10-16: reclamo creado; contratos propuestos en `team/contracts.md` (pendientes de acuerdo con quien haga el backend).
 2026-10-16: W1 listo. Vite 8 + React 19 + TS 5.9 + Vitest 5; fuentes del sistema para que la demo funcione sin red; navegación con `history.pushState` para que el estado simulado sobreviva al cambiar de vista.
+2026-10-16: W2 listo. `src/api/` = tipos del contrato, cliente `fetch` y simulación; el estado simulado vive en `sessionStorage` y el estado de cada ingreso se deriva del tiempo desde la confirmación. Fallos forzables: `?fallo=stellar|pago|grant|limite|inventario`. Contrato: se agregan los códigos `grant_exhausted` y `quote_expired`.
 
 ## Siguiente paso
-W2: cliente de API + simulación según `team/contracts.md`.
+W3: billetera de billetes + ranura del cajero.
