@@ -1,6 +1,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import type { Clock } from '../../shared/ports.ts'
+import { DomainError } from '../../shared/errors.ts'
 import { money } from '../../shared/money.ts'
 import { createQuoted, memoFromId } from './cash-in.ts'
 
@@ -14,17 +15,21 @@ describe('memoFromId', () => {
   it('keeps the WALLE- prefix and the first 8 alphanumerics', () => {
     expect(memoFromId('ab-cd_12 34efgh')).toBe('WALLE-ABCD1234')
     expect(memoFromId('xyz')).toBe('WALLE-XYZ')
+    expect(() => memoFromId('--__ ')).toThrow(DomainError)
     expect(Buffer.byteLength(memoFromId('ab-cd_12 34efgh'))).toBeLessThanOrEqual(28)
   })
 
   it('stays inside the Stellar text-memo limit for any id', () => {
     fc.assert(
-      fc.property(fc.string({ maxLength: 80 }), (id) => {
-        const memo = memoFromId(id)
-        expect(memo.startsWith('WALLE-')).toBe(true)
-        expect(memo.slice('WALLE-'.length)).toMatch(/^[0-9A-Z]{0,8}$/)
-        expect(Buffer.byteLength(memo)).toBeLessThanOrEqual(28)
-      }),
+      fc.property(
+        fc.string({ maxLength: 80 }).filter((id) => /[0-9A-Za-z]/.test(id)),
+        (id) => {
+          const memo = memoFromId(id)
+          expect(memo.startsWith('WALLE-')).toBe(true)
+          expect(memo.slice('WALLE-'.length)).toMatch(/^[0-9A-Z]{1,8}$/)
+          expect(Buffer.byteLength(memo)).toBeLessThanOrEqual(28)
+        },
+      ),
     )
   })
 })

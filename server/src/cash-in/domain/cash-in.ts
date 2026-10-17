@@ -1,3 +1,4 @@
+import { DomainError } from '../../shared/errors.ts'
 import type { Money } from '../../shared/money.ts'
 import type { Clock } from '../../shared/ports.ts'
 
@@ -62,6 +63,8 @@ export function memoFromId(id: string): string {
     .replace(/[^0-9A-Za-z]/g, '')
     .slice(0, 8)
     .toUpperCase()
+  if (body.length === 0)
+    throw new DomainError('invalid_amount', 'id has no alphanumeric characters')
   return `${MEMO_PREFIX}${body}`
 }
 
