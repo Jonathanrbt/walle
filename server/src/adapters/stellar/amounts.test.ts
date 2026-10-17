@@ -206,7 +206,7 @@ describe('isEnvelopeDead decision', () => {
     )
   })
 
-  it('is true when the sequence was consumed or the deadline passed, and the hash is absent', () => {
+  it('is true when the sequence was consumed and the hash is absent', () => {
     expect(envelopeIsDead({ ...alive, lookup: { kind: 'not_found' } })).toBe(false)
     expect(
       envelopeIsDead({
@@ -215,12 +215,37 @@ describe('isEnvelopeDead decision', () => {
         accountSequence: 6n,
       }),
     ).toBe(true)
+  })
+
+  it('treats time expiry as dead only after the ingest margin, and only if the hash is still absent', () => {
+    const expired = {
+      ...alive,
+      lookup: { kind: 'not_found' as const },
+      maxTime: 1_000n,
+      accountSequence: 5n,
+      envelopeSequence: 6n,
+    }
+    expect(envelopeIsDead({ ...expired, nowSeconds: 1_000n })).toBe(false)
+    expect(envelopeIsDead({ ...expired, nowSeconds: 1_029n })).toBe(false)
+    expect(envelopeIsDead({ ...expired, nowSeconds: 1_030n })).toBe(true)
     expect(
       envelopeIsDead({
-        ...alive,
+        ...expired,
+        nowSeconds: 1_030n,
+        lookup: { kind: 'success', ledger: 9 },
+      }),
+    ).toBe(false)
+    expect(envelopeIsDead({ ...expired, nowSeconds: 1_030n, marginSeconds: 5n })).toBe(true)
+  })
+
+  it('would call the envelope dead from a lookup taken before the inclusion', () => {
+    expect(
+      envelopeIsDead({
         lookup: { kind: 'not_found' },
-        maxTime: 1_000n,
-        nowSeconds: 1_000n,
+        maxTime: 0n,
+        nowSeconds: 2_000n,
+        accountSequence: 6n,
+        envelopeSequence: 6n,
       }),
     ).toBe(true)
   })

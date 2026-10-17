@@ -25,7 +25,17 @@ export type DestinationCheck =
 export interface PreparedTransfer {
   readonly envelopeXdr: string
   readonly txHash: string
-  readonly sequence: string
+  /**
+   * Sequence the builder put in the envelope. Submit and liveness ignore it and
+   * read the XDR, so a resumed cash-in does not invent one.
+   */
+  readonly sequence?: string
+}
+
+/** Result of `isEnvelopeDead`. `accountSequence` was sampled before the lookup. */
+export interface EnvelopeVerdict {
+  readonly dead: boolean
+  readonly accountSequence: string
 }
 
 export type SubmitOutcome =
@@ -54,11 +64,13 @@ export interface RefillResult {
  * `prepareTransfer` and `submit` each take the in-process mutex separately, so they are not one
  * atomic transfer. `refill` and `ensureOperatorReady` take that same mutex and, when they submit,
  * advance the operator sequence. An envelope prepared before that advance can never apply.
- * `isEnvelopeDead` is true only when `lookup` is `not_found` and the envelope can never apply
- * (its maxTime has passed, or the account sequence is already at or past the envelope sequence).
- * Only then may the caller rebuild with `prepareTransfer`. A `failed` lookup means this envelope
- * was included and rejected; the caller rebuilds because the lookup failed, not because the
- * envelope is dead.
+ * `isEnvelopeDead` samples the account sequence and the clock, then looks the hash up.
+ * It is dead only when that later lookup is `not_found` and the envelope can never apply
+ * (now is at least 30s past maxTime, or the sampled sequence is already at or past the
+ * envelope sequence). A hash that is on the ledger is never dead, including when this
+ * transaction is what consumed the sequence. Only a dead verdict may rebuild via
+ * `prepareTransfer`. A `failed` lookup means this envelope was included and rejected;
+ * the caller rebuilds because the lookup failed, not because the envelope is dead.
  */
 export interface UsdcNetwork {
   ensureOperatorReady(): Promise<void>
@@ -68,5 +80,5 @@ export interface UsdcNetwork {
   submit(prepared: PreparedTransfer): Promise<SubmitOutcome>
   lookup(txHash: string): Promise<LookupResult>
   refill(input: { targetUsdc: Money }): Promise<RefillResult>
-  isEnvelopeDead(prepared: PreparedTransfer): Promise<boolean>
+  isEnvelopeDead(prepared: PreparedTransfer): Promise<EnvelopeVerdict>
 }

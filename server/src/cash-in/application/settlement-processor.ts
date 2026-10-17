@@ -16,6 +16,14 @@ const ACTIVE = ['quoted', 'settling', 'settled', 'sending_usdc'] as const
 const PENDING_WARN_MS = 120_000
 const DEFAULT_POLL_MS = 1000
 const DEFAULT_MAX_BACKOFF_MS = 30_000
+const DEFAULT_REBUILD_CONFIRM_MS = 15_000
+const RECOVER_UNKNOWN_LOG_MS = 60 * 60 * 1000
+
+interface DeadSight {
+  readonly txHash: string
+  readonly accountSequence: string
+  readonly atMs: number
+}
 
 export interface Logger {
   info(fields: object, message: string): void
@@ -38,6 +46,8 @@ export interface SettlementProcessorDeps {
   readonly scheduler: Scheduler
   readonly pollMs?: number
   readonly maxBackoffMs?: number
+  /** Second dead verdict must be at least this long after the first. */
+  readonly rebuildConfirmMs?: number
 }
 
 type StepResult = 'ok' | 'retry'
@@ -57,11 +67,15 @@ export class SettlementProcessor {
   readonly #scheduler: Scheduler
   readonly #pollMs: number
   readonly #maxBackoffMs: number
+  readonly #rebuildConfirmMs: number
   readonly #notBefore = new Map<string, number>()
   readonly #delayMs = new Map<string, number>()
   /** Hashes already shown to the customer as `failed_stellar` in this process. */
   readonly #reportedFailed = new Set<string>()
   readonly #warnedPending = new Set<string>()
+  /** First consistent dead sighting. A restart drops it and only delays a rebuild. */
+  readonly #deadConfirm = new Map<string, DeadSight>()
+  readonly #recoverUnknownAt = new Map<string, number>()
   #operatorReady = false
   #started = false
   #stopped = false
@@ -79,6 +93,7 @@ export class SettlementProcessor {
     this.#scheduler = deps.scheduler
     this.#pollMs = deps.pollMs ?? DEFAULT_POLL_MS
     this.#maxBackoffMs = deps.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS
+    this.#rebuildConfirmMs = deps.rebuildConfirmMs ?? DEFAULT_REBUILD_CONFIRM_MS
   }
 
   /** Does not throw. A failed operator setup is retried on the next pass. */
@@ -132,6 +147,7 @@ export class SettlementProcessor {
     for (const cashIn of rows) {
       await this.#advance(cashIn)
     }
+    this.#forgetIdle(new Set(rows.map((row) => row.id)))
   }
 
   async #advance(cashIn: CashIn): Promise<void> {
@@ -196,8 +212,11 @@ export class SettlementProcessor {
         }),
       )
     } catch (error) {
-      return this.#retry(cashIn, error)
+      if (isVersionConflict(error)) throw error
+      this.#logUnknownRecovery(cashIn, error)
+      return 'retry'
     }
+    this.#recoverUnknownAt.delete(cashIn.id)
     if (found !== undefined) {
       await this.#save(cashIn, { type: 'OutgoingCreated', outgoingPaymentId: found.id })
       return 'ok'
@@ -306,7 +325,7 @@ export class SettlementProcessor {
     if (txHash === undefined || envelopeXdr === undefined) {
       return this.#retry(cashIn, new Error('stellar envelope is missing'))
     }
-    const prepared: PreparedTransfer = { envelopeXdr, txHash, sequence: '0' }
+    const prepared: PreparedTransfer = { envelopeXdr, txHash }
     let looked: Awaited<ReturnType<UsdcNetwork['lookup']>>
     try {
       looked = await this.#usdc.lookup(txHash)
@@ -314,25 +333,70 @@ export class SettlementProcessor {
       return this.#retry(cashIn, error)
     }
     if (looked.kind === 'success') {
+      this.#deadConfirm.delete(cashIn.id)
       await this.#save(cashIn, { type: 'UsdcSent', stellarTxHash: txHash })
       this.#reportedFailed.delete(failedKey(cashIn.id, txHash))
       return 'ok'
     }
     if (looked.kind === 'failed') {
+      this.#deadConfirm.delete(cashIn.id)
       const key = failedKey(cashIn.id, txHash)
       if (this.#reportedFailed.has(key)) return this.#rebuild(cashIn)
       await this.#save(cashIn, { type: 'UsdcFailed', reason: looked.code })
       this.#reportedFailed.add(key)
       return 'ok'
     }
-    let dead = false
+    let verdict: Awaited<ReturnType<UsdcNetwork['isEnvelopeDead']>>
     try {
-      dead = await this.#usdc.isEnvelopeDead(prepared)
+      verdict = await this.#usdc.isEnvelopeDead(prepared)
     } catch (error) {
       return this.#retry(cashIn, error)
     }
-    if (dead) return this.#rebuild(cashIn)
-    return this.#submitStored(cashIn, prepared)
+    if (!verdict.dead) {
+      this.#deadConfirm.delete(cashIn.id)
+      return this.#submitStored(cashIn, prepared)
+    }
+    return this.#confirmDead(cashIn, txHash, verdict.accountSequence)
+  }
+
+  #confirmDead(cashIn: CashIn, txHash: string, accountSequence: string): Promise<StepResult> {
+    const now = this.#clock.now().getTime()
+    const previous = this.#deadConfirm.get(cashIn.id)
+    const sameTx = previous?.txHash === txHash
+    const sameAccount = previous?.accountSequence === accountSequence
+    if (!sameTx || !sameAccount) {
+      this.#deadConfirm.set(cashIn.id, { txHash, accountSequence, atMs: now })
+      return Promise.resolve('ok')
+    }
+    if (now - previous.atMs < this.#rebuildConfirmMs) return Promise.resolve('ok')
+    this.#deadConfirm.delete(cashIn.id)
+    return this.#rebuild(cashIn)
+  }
+
+  #logUnknownRecovery(cashIn: CashIn, error: unknown): void {
+    const now = this.#clock.now().getTime()
+    const previous = this.#recoverUnknownAt.get(cashIn.id) ?? 0
+    if (previous !== 0 && now - previous < RECOVER_UNKNOWN_LOG_MS) return
+    this.#recoverUnknownAt.set(cashIn.id, now)
+    this.#log.error(
+      { cashInId: cashIn.id, err: safeError(error) },
+      'outgoing payment lookup is unknown',
+    )
+  }
+
+  #forgetIdle(live: ReadonlySet<string>): void {
+    for (const id of this.#notBefore.keys()) {
+      if (!live.has(id)) this.#clearBackoff(id)
+    }
+    for (const id of this.#warnedPending) {
+      if (!live.has(id)) this.#warnedPending.delete(id)
+    }
+    for (const id of this.#deadConfirm.keys()) {
+      if (!live.has(id)) this.#deadConfirm.delete(id)
+    }
+    for (const id of this.#recoverUnknownAt.keys()) {
+      if (!live.has(id)) this.#recoverUnknownAt.delete(id)
+    }
   }
 
   async #rebuild(cashIn: CashIn): Promise<StepResult> {

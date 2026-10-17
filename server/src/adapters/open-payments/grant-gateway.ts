@@ -47,6 +47,8 @@ async function start(
           access: [
             {
               type: 'outgoing-payment',
+              // `list` is how settlement finds a payment created before its id was stored.
+              // A token issued without it cannot be searched; that is unknown, not absence.
               actions: ['create', 'read', 'list'],
               identifier: store.id,
               limits: {

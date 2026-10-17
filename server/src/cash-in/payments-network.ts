@@ -42,7 +42,9 @@ export interface PaymentsNetwork {
 
   /**
    * Newest outgoing payments on the store wallet, up to 200.
-   * `undefined` when none of them was created from `quoteId`.
+   * `undefined` only when that scan finishes and none of them used `quoteId`.
+   * Hitting the cap with more pages left throws `unavailable`: that is unknown,
+   * not proof that the quote was never paid.
    */
   findOutgoingPaymentByQuote(input: {
     readonly quoteId: string

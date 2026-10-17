@@ -8,6 +8,7 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk'
 import { describe, expect, it } from 'vitest'
+import { readEnvelope } from '../../src/adapters/stellar/envelope.ts'
 import { HorizonUsdcNetwork } from '../../src/adapters/stellar/usdc-network.ts'
 import { money } from '../../src/shared/money.ts'
 import { loadConfig } from '../../src/config.ts'
@@ -33,6 +34,9 @@ runUsdcNetworkContract('fake usdc network', async () => {
     addUsdcTrustline: (secret) => fake.addUsdcTrustline(secret),
     loseNextSubmitResponse: () => {
       fake.loseNextSubmitResponse()
+    },
+    armApplyBetweenDeadReads: () => {
+      fake.armApplyBetweenDeadReads()
     },
   }
 })
@@ -87,7 +91,7 @@ describe('fake usdc network failure injection', () => {
     expect(await fake.submit(prepared)).toEqual({ kind: 'rejected', code: 'op_underfunded' })
     expect(await fake.lookup(prepared.txHash)).toEqual({ kind: 'failed', code: 'op_underfunded' })
     expect((await fake.balance()).amount).toBe(before.amount)
-    expect(await fake.isEnvelopeDead(prepared)).toBe(false)
+    expect(await fake.isEnvelopeDead(prepared)).toMatchObject({ dead: false })
   })
 
   it('reports no_trustline when the destination limit is already full', async () => {
@@ -141,7 +145,25 @@ describe('fake usdc network failure injection', () => {
     })
     await fake.refill({ targetUsdc: money(100n, 'USDC', 2) })
     expect(await fake.lookup(prepared.txHash)).toEqual({ kind: 'not_found' })
-    expect(await fake.isEnvelopeDead(prepared)).toBe(true)
+    expect(await fake.isEnvelopeDead(prepared)).toMatchObject({ dead: true })
+  })
+
+  it('waits out the ingest margin before an unsent envelope expires', async () => {
+    const fake = new FakeUsdcNetwork()
+    await fake.ensureOperatorReady()
+    const dest = await readyDestination(fake)
+    const prepared = await fake.prepareTransfer({
+      to: dest,
+      amount: money(1n, 'USDC', 7),
+      memo: 'expiry',
+    })
+    const maxTime = readEnvelope(prepared.envelopeXdr).maxTime
+    fake.useNow(() => new Date(Number(maxTime) * 1000))
+    expect(await fake.isEnvelopeDead(prepared)).toMatchObject({ dead: false })
+    fake.useNow(() => new Date(Number(maxTime + 29n) * 1000))
+    expect(await fake.isEnvelopeDead(prepared)).toMatchObject({ dead: false })
+    fake.useNow(() => new Date(Number(maxTime + 30n) * 1000))
+    expect(await fake.isEnvelopeDead(prepared)).toMatchObject({ dead: true })
   })
 })
 

@@ -10,6 +10,7 @@ import { StoreGrantError } from '../../store-grant/application/errors.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
 import {
   StellarError,
+  type EnvelopeVerdict,
   type LookupResult,
   type PreparedTransfer,
   type SubmitOutcome,
@@ -59,6 +60,7 @@ class ScriptedUsdc implements UsdcNetwork {
   lookupResult: LookupResult = { kind: 'not_found' }
   submitResult: SubmitOutcome = { kind: 'success', ledger: 1 }
   dead = false
+  accountSequence = '6'
   prepares = 0
   submits = 0
   readyCalls = 0
@@ -99,22 +101,25 @@ class ScriptedUsdc implements UsdcNetwork {
     return Promise.reject(new Error('unused'))
   }
 
-  isEnvelopeDead(): Promise<boolean> {
-    return Promise.resolve(this.dead)
+  isEnvelopeDead(): Promise<EnvelopeVerdict> {
+    return Promise.resolve({ dead: this.dead, accountSequence: this.accountSequence })
   }
 }
 
-function capture(): { log: Logger; events: { level: string; message: string }[] } {
-  const events: { level: string; message: string }[] = []
+function capture(): {
+  log: Logger
+  events: { level: string; message: string; fields: object }[]
+} {
+  const events: { level: string; message: string; fields: object }[] = []
   const log: Logger = {
-    info(_fields, message) {
-      events.push({ level: 'info', message })
+    info(fields, message) {
+      events.push({ level: 'info', message, fields })
     },
-    warn(_fields, message) {
-      events.push({ level: 'warn', message })
+    warn(fields, message) {
+      events.push({ level: 'warn', message, fields })
     },
-    error(_fields, message) {
-      events.push({ level: 'error', message })
+    error(fields, message) {
+      events.push({ level: 'error', message, fields })
     },
   }
   return { log, events }
@@ -369,6 +374,43 @@ describe('SettlementProcessor', () => {
     expect((await blocked.repo.get(claimed.id))?.openPayments.outgoingPaymentId).toBeUndefined()
   })
 
+  it.each([
+    ['unavailable', 'wallet timeout'],
+    ['unauthorized', 'the payments network refused the credentials'],
+    ['rejected', 'outgoing list was refused'],
+    ['unavailable', 'outgoing payment list exceeded the scan cap'],
+  ] as const)('keeps an expired settling cash-in when the lookup is %s', async (kind, detail) => {
+    const subject = harness()
+    const cashIn = await settling(subject, false)
+    const network = subject.payments as FakePaymentsNetwork
+    subject.clock.advance(60_000)
+    network.failNextFind(new PaymentsNetworkError(kind, detail))
+    await subject.processor.runOnce()
+    const stored = await subject.repo.get(cashIn.id)
+    expect(stored?.status).toBe('settling')
+    expect(stored?.openPayments.outgoingPaymentId).toBeUndefined()
+    const logged = subject.events.filter(
+      (event) => event.message === 'outgoing payment lookup is unknown',
+    )
+    expect(logged).toHaveLength(1)
+    expect(logged[0]?.fields).toMatchObject({ cashInId: cashIn.id })
+
+    network.failNextFind(new PaymentsNetworkError(kind, detail))
+    subject.clock.advance(1000)
+    await subject.processor.runOnce()
+    expect(
+      subject.events.filter((event) => event.message === 'outgoing payment lookup is unknown'),
+    ).toHaveLength(1)
+
+    network.failNextFind(new PaymentsNetworkError(kind, detail))
+    subject.clock.advance(60 * 60 * 1000)
+    await subject.processor.runOnce()
+    expect(
+      subject.events.filter((event) => event.message === 'outgoing payment lookup is unknown'),
+    ).toHaveLength(2)
+    expect((await subject.repo.get(cashIn.id))?.status).toBe('settling')
+  })
+
   it('fails the cash-in when outgoing creation is rejected', async () => {
     const subject = harness()
     const cashIn = await settling(subject, false)
@@ -572,11 +614,58 @@ describe('SettlementProcessor', () => {
       NOW,
     )
     dead.usdc.dead = true
+    dead.usdc.accountSequence = '6'
+    await dead.processor.runOnce()
+    expect((await dead.repo.get(cashIn.id))?.stellarTxHash).toBe('old-hash')
+    expect(dead.usdc.prepares).toBe(0)
+    expect(dead.usdc.submits).toBe(0)
+    dead.clock.advance(14_999)
+    await dead.processor.runOnce()
+    expect((await dead.repo.get(cashIn.id))?.stellarTxHash).toBe('old-hash')
+    dead.clock.advance(1)
     await dead.processor.runOnce()
     const rebuilt = await dead.repo.get(cashIn.id)
     expect(rebuilt?.status).toBe('sending_usdc')
     expect(rebuilt?.stellarTxHash).toBe('hash-1')
     expect(dead.usdc.submits).toBe(0)
+
+    const moved = harness()
+    const openMoved = await settling(moved, true)
+    const readyMoved = await apply(moved.repo, openMoved, { type: 'IncomingCompleted' }, NOW)
+    await apply(
+      moved.repo,
+      readyMoved,
+      { type: 'UsdcSendStarted', stellarEnvelopeXdr: 'old', stellarTxHash: 'old-hash' },
+      NOW,
+    )
+    moved.usdc.dead = true
+    moved.usdc.accountSequence = '6'
+    await moved.processor.runOnce()
+    moved.clock.advance(15_000)
+    moved.usdc.accountSequence = '7'
+    await moved.processor.runOnce()
+    expect((await moved.repo.get(openMoved.id))?.stellarTxHash).toBe('old-hash')
+    moved.clock.advance(15_000)
+    await moved.processor.runOnce()
+    expect((await moved.repo.get(openMoved.id))?.stellarTxHash).toBe('hash-1')
+
+    const flashed = harness()
+    const openFlashed = await settling(flashed, true)
+    const readyFlashed = await apply(flashed.repo, openFlashed, { type: 'IncomingCompleted' }, NOW)
+    await apply(
+      flashed.repo,
+      readyFlashed,
+      { type: 'UsdcSendStarted', stellarEnvelopeXdr: 'old', stellarTxHash: 'old-hash' },
+      NOW,
+    )
+    flashed.usdc.dead = true
+    await flashed.processor.runOnce()
+    flashed.usdc.lookupResult = { kind: 'success', ledger: 4 }
+    flashed.usdc.dead = false
+    flashed.clock.advance(15_000)
+    await flashed.processor.runOnce()
+    expect((await flashed.repo.get(openFlashed.id))?.status).toBe('completed')
+    expect(flashed.usdc.prepares).toBe(0)
 
     const live = harness()
     const open = await settling(live, true)

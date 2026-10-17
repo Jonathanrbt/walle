@@ -225,24 +225,29 @@ async function findOutgoingPaymentByQuote(
           'wallet-address': store.id,
         },
       )
+      let stoppedEarly = false
       for (const payment of page.result) {
+        if (scanned >= OUTGOING_LIST_LIMIT) {
+          stoppedEarly = true
+          break
+        }
         scanned += 1
         if (payment.quoteId === input.quoteId) return { id: payment.id }
-        if (scanned >= OUTGOING_LIST_LIMIT) return undefined
       }
       const next = page.pagination.endCursor
-      if (
-        !page.pagination.hasNextPage ||
-        next === undefined ||
-        page.result.length === 0 ||
-        seenCursors.has(next)
-      ) {
-        return undefined
+      const more =
+        page.pagination.hasNextPage &&
+        next !== undefined &&
+        page.result.length > 0 &&
+        !seenCursors.has(next)
+      if (stoppedEarly || (scanned >= OUTGOING_LIST_LIMIT && more)) {
+        throw new PaymentsNetworkError('unavailable', 'outgoing payment list exceeded the scan cap')
       }
+      if (!more) return undefined
       seenCursors.add(next)
       cursor = next
     }
-    return undefined
+    throw new PaymentsNetworkError('unavailable', 'outgoing payment list exceeded the scan cap')
   })
 }
 
