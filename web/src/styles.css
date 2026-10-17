@@ -245,6 +245,7 @@ h2 { font-weight: 650; }
   animation: print 900ms var(--ease) both;
 }
 .ticket h1 { font-size: 1.3rem; }
+.ticket + .atm-actions { justify-content: center; }
 .ticket .atm-quote { border-top: var(--stroke) dashed var(--face-3); border-bottom: var(--stroke) dashed var(--face-3); padding: 12px 0; }
 
 /* Panels: store and operator */
@@ -270,7 +271,7 @@ h2 { font-weight: 650; }
 
 /* Isometric drawings */
 .iso { overflow: visible; }
-.iso polygon, .iso path, .iso ellipse, .iso line {
+.iso polygon, .iso polyline, .iso path, .iso ellipse, .iso line {
   stroke: var(--ink);
   stroke-width: var(--stroke);
   stroke-linejoin: round;
@@ -292,6 +293,8 @@ h2 { font-weight: 650; }
 .iso-ink .iso-top, .iso-ink .iso-left, .iso-ink .iso-right { fill: var(--ink); }
 .iso-line { fill: none; }
 .iso-fill { fill: var(--face-2); }
+.iso-ink { fill: var(--ink); }
+.scene { display: block; width: 100%; max-width: 320px; height: auto; margin: -4px auto 8px; }
 .iso-shadow { fill: var(--face-2); stroke: none !important; }
 .iso-dash { fill: none; stroke: var(--signal) !important; stroke-dasharray: 3 4; animation: flow 1.2s linear infinite; }
 .iso-dot { fill: var(--signal); stroke: none !important; animation: blink 1.6s ease-in-out infinite; }

@@ -6,6 +6,7 @@ import { FieldStep } from '../cajero/Datos'
 import { AddressStep } from '../cajero/Direccion'
 import { errorMessages } from '../cajero/phases'
 import { ProcessingScreen, QuoteScreen, Receipt } from '../cajero/Proceso'
+import { AtmScene } from '../iso/scenes'
 import { validDocument, validName, validPhone } from '../cajero/validate'
 
 type Step =
@@ -147,6 +148,7 @@ export function Cajero() {
           <div key={step} className="screen-in">
             {step === 'idle' && (
               <>
+                <AtmScene />
                 <p className="atm-kicker">Efectivo → USDC en Stellar</p>
                 <h1>Bienvenido</h1>
                 <p>Convierte tus billetes en dólares digitales en tu propia billetera.</p>
