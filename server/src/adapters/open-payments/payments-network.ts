@@ -106,6 +106,9 @@ export function createPaymentsNetwork(
     createOutgoingPayment(input) {
       return createOutgoingPayment(wallets.store, input)
     },
+    findOutgoingPaymentByQuote(input) {
+      return findOutgoingPaymentByQuote(wallets.store, input)
+    },
     getOutgoingPayment(id, accessToken) {
       return getOutgoingPayment(wallets.store, id, accessToken)
     },
@@ -194,6 +197,52 @@ async function createOutgoingPayment(
       },
     )
     return { id: created.id }
+  })
+}
+
+/** The resource server returns the newest outgoing payment first. */
+const OUTGOING_LIST_LIMIT = 200
+const OUTGOING_PAGE = 100
+
+async function findOutgoingPaymentByQuote(
+  store: WalletSession,
+  input: { quoteId: string; accessToken: string },
+): Promise<{ id: string } | undefined> {
+  return attempt(async () => {
+    let cursor: string | undefined
+    let scanned = 0
+    const seenCursors = new Set<string>()
+    while (scanned < OUTGOING_LIST_LIMIT) {
+      const page = await store.client.outgoingPayment.list(
+        {
+          url: store.resourceServer,
+          walletAddress: store.id,
+          accessToken: input.accessToken,
+        },
+        {
+          first: Math.min(OUTGOING_PAGE, OUTGOING_LIST_LIMIT - scanned),
+          ...(cursor === undefined ? {} : { cursor }),
+          'wallet-address': store.id,
+        },
+      )
+      for (const payment of page.result) {
+        scanned += 1
+        if (payment.quoteId === input.quoteId) return { id: payment.id }
+        if (scanned >= OUTGOING_LIST_LIMIT) return undefined
+      }
+      const next = page.pagination.endCursor
+      if (
+        !page.pagination.hasNextPage ||
+        next === undefined ||
+        page.result.length === 0 ||
+        seenCursors.has(next)
+      ) {
+        return undefined
+      }
+      seenCursors.add(next)
+      cursor = next
+    }
+    return undefined
   })
 }
 

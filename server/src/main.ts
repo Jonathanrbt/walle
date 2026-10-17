@@ -16,6 +16,7 @@ try {
   process.once('SIGTERM', shutdown)
 
   await runtime.app.listen({ port: config.http.port, host: '0.0.0.0' })
+  runtime.start()
 } catch (error) {
   if (error instanceof ConfigError) {
     console.error(error.message)

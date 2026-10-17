@@ -65,6 +65,7 @@ function harness(options?: { readonly limit?: string }) {
       if (boom !== undefined) throw boom
       return payments.createOutgoingPayment(input)
     },
+    findOutgoingPaymentByQuote: (input) => payments.findOutgoingPaymentByQuote(input),
     getOutgoingPayment: (id, accessToken) => payments.getOutgoingPayment(id, accessToken),
     getIncomingPayment: (url) => payments.getIncomingPayment(url),
     completeIncomingPayment: (url) => payments.completeIncomingPayment(url),

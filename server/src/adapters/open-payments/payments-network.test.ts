@@ -491,6 +491,83 @@ describe('createPaymentsNetwork', () => {
       detail: 'quote grant was not approved',
     })
   })
+
+  it('finds an outgoing payment by quote, newest page first, and stops at 200', async () => {
+    const wallet = session({ client: client({}) })
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result: [{ id: 'https://rs.example.test/outgoing/new', quoteId: 'other' }],
+        pagination: {
+          hasNextPage: true,
+          hasPreviousPage: false,
+          endCursor: 'cursor-1',
+          startCursor: 'start-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        result: [{ id: 'https://rs.example.test/outgoing/match', quoteId: QUOTE.id }],
+        pagination: {
+          hasNextPage: true,
+          hasPreviousPage: true,
+          endCursor: 'cursor-2',
+          startCursor: 'start-2',
+        },
+      })
+    const network = createPaymentsNetwork({
+      store: session({ client: client({ outgoingPayment: { list } }) }),
+      operator: session({ client: client({}) }),
+    })
+    const found = await network.findOutgoingPaymentByQuote({
+      quoteId: QUOTE.id,
+      accessToken: 'user-token',
+    })
+    expect(found).toEqual({ id: 'https://rs.example.test/outgoing/match' })
+    expect(list).toHaveBeenNthCalledWith(
+      1,
+      {
+        url: wallet.resourceServer,
+        walletAddress: wallet.id,
+        accessToken: 'user-token',
+      },
+      { first: 100, 'wallet-address': wallet.id },
+    )
+    expect(list).toHaveBeenNthCalledWith(
+      2,
+      {
+        url: wallet.resourceServer,
+        walletAddress: wallet.id,
+        accessToken: 'user-token',
+      },
+      { first: 100, cursor: 'cursor-1', 'wallet-address': wallet.id },
+    )
+
+    let calls = 0
+    const capped = vi.fn(() => {
+      calls += 1
+      const start = (calls - 1) * 100
+      return Promise.resolve({
+        result: Array.from({ length: 100 }, (_item, index) => ({
+          id: `https://rs.example.test/outgoing/${(start + index).toString()}`,
+          quoteId: 'unrelated',
+        })),
+        pagination: {
+          hasNextPage: true,
+          hasPreviousPage: calls > 1,
+          endCursor: `end-${calls.toString()}`,
+          startCursor: `start-${calls.toString()}`,
+        },
+      })
+    })
+    const limited = createPaymentsNetwork({
+      store: session({ client: client({ outgoingPayment: { list: capped } }) }),
+      operator: session({ client: client({}) }),
+    })
+    await expect(
+      limited.findOutgoingPaymentByQuote({ quoteId: QUOTE.id, accessToken: 'user-token' }),
+    ).resolves.toBeUndefined()
+    expect(capped).toHaveBeenCalledTimes(2)
+  })
 })
 
 function unauthorized(): OpenPaymentsClientError {

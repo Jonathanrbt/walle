@@ -40,6 +40,15 @@ export interface PaymentsNetwork {
     readonly description?: string
   }): Promise<{ id: string }>
 
+  /**
+   * Newest outgoing payments on the store wallet, up to 200.
+   * `undefined` when none of them was created from `quoteId`.
+   */
+  findOutgoingPaymentByQuote(input: {
+    readonly quoteId: string
+    readonly accessToken: string
+  }): Promise<{ id: string } | undefined>
+
   /** Paid when sent equals debit. Failed when the resource says so. */
   getOutgoingPayment(
     id: string,

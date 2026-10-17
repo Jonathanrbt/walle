@@ -47,7 +47,7 @@ async function start(
           access: [
             {
               type: 'outgoing-payment',
-              actions: ['create', 'read'],
+              actions: ['create', 'read', 'list'],
               identifier: store.id,
               limits: {
                 debitAmount: toSdkAmount(input.limit),

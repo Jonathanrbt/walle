@@ -155,7 +155,7 @@ export class FakeUsdcNetwork implements UsdcNetwork {
         limit: MAX_LIMIT,
         authorized: true,
       }
-      this.advance(account, prepared, 'success', '')
+      this.advance(account, prepared.sequence, prepared.txHash, 'success', '')
       return Promise.resolve()
     })
   }
@@ -263,7 +263,7 @@ export class FakeUsdcNetwork implements UsdcNetwork {
       )
       account.xlm -= cost + fee
       line.balance += gap
-      this.advance(account, prepared, 'success', '')
+      this.advance(account, prepared.sequence, prepared.txHash, 'success', '')
       return Promise.resolve({ txHash: prepared.txHash, usdc: money(gap, USDC_CODE, USDC_SCALE) })
     })
   }
@@ -297,13 +297,13 @@ export class FakeUsdcNetwork implements UsdcNetwork {
     if (line === null)
       throw new StellarError('operator_not_ready', 'operator has no USDC trustline')
     if (fault === 'underfunded' || line.balance < payment.amount) {
-      this.advance(operator, prepared, 'failed', 'op_underfunded')
+      this.advance(operator, payment.sequence, prepared.txHash, 'failed', 'op_underfunded')
       return { kind: 'rejected', code: 'op_underfunded' }
     }
     const destination = this.accounts.get(payment.destination)
     const code = receiveCode(destination?.usdc, payment.amount)
     if (code !== null) {
-      this.advance(operator, prepared, 'failed', code)
+      this.advance(operator, payment.sequence, prepared.txHash, 'failed', code)
       return { kind: 'rejected', code }
     }
     line.balance -= payment.amount
@@ -313,7 +313,7 @@ export class FakeUsdcNetwork implements UsdcNetwork {
     }
     destLine.balance += payment.amount
     operator.xlm -= payment.feeStroops
-    this.advance(operator, prepared, 'success', '')
+    this.advance(operator, payment.sequence, prepared.txHash, 'success', '')
     const recorded = this.txs.get(prepared.txHash)
     if (recorded?.kind !== 'success') {
       throw new StellarError('unavailable', 'applied transaction was not recorded')
@@ -366,13 +366,14 @@ export class FakeUsdcNetwork implements UsdcNetwork {
 
   private advance(
     account: AccountState,
-    prepared: PreparedTransfer,
+    sequence: string,
+    txHash: string,
     kind: 'success' | 'failed',
     code: string,
   ): void {
     this.ledger += 1
-    account.sequence = BigInt(prepared.sequence)
-    this.txs.set(prepared.txHash, { kind, ledger: this.ledger, code })
+    account.sequence = BigInt(sequence)
+    this.txs.set(txHash, { kind, ledger: this.ledger, code })
   }
 
   private fee(): string {

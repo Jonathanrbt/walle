@@ -79,12 +79,16 @@ describe('fake payments network', () => {
 })
 
 describe.skipIf(process.env.TESTNET !== '1')('interledger testnet', () => {
-  runPaymentsNetworkContract('open-payments', async () => {
-    const config = loadConfig(process.env)
-    const [store, operator] = await Promise.all([
-      openWalletSession(config.store),
-      openWalletSession(config.operator),
-    ])
-    return createPaymentsNetwork({ store, operator })
-  })
+  runPaymentsNetworkContract(
+    'open-payments',
+    async () => {
+      const config = loadConfig(process.env)
+      const [store, operator] = await Promise.all([
+        openWalletSession(config.store),
+        openWalletSession(config.operator),
+      ])
+      return createPaymentsNetwork({ store, operator })
+    },
+    { live: true },
+  )
 })

@@ -15,6 +15,11 @@ import type { Config } from './config.ts'
 import { ConfirmCashIn } from './cash-in/application/confirm-cash-in.ts'
 import { CreateCashIn } from './cash-in/application/create-cash-in.ts'
 import { GetCashIn } from './cash-in/application/get-cash-in.ts'
+import {
+  SettlementProcessor,
+  type Logger,
+  type Scheduler,
+} from './cash-in/application/settlement-processor.ts'
 import type { PaymentsNetwork } from './cash-in/payments-network.ts'
 import type { CashInRepository } from './cash-in/repository.ts'
 import { ConfiguredRateProvider, type RateProvider } from './pricing/rate-provider.ts'
@@ -40,10 +45,14 @@ export interface ComposeOverrides {
   readonly ids?: IdGenerator
   readonly mutex?: Mutex
   readonly logger?: false | LoggerOptions
+  readonly scheduler?: Scheduler
+  readonly settlement?: { readonly pollMs?: number; readonly maxBackoffMs?: number }
 }
 
 export interface AppRuntime {
   readonly app: ReturnType<typeof buildApp>
+  start(): void
+  runOnce(): Promise<void>
   close(): Promise<void>
 }
 
@@ -120,11 +129,54 @@ export function composeApp(config: Config, overrides: ComposeOverrides = {}): Ap
     webBaseUrl: config.http.webBaseUrl,
     clock,
   })
+  const processor = new SettlementProcessor({
+    cashIns,
+    payments,
+    usdc,
+    storeGrant,
+    clock,
+    log: toLogger(app.log),
+    scheduler: overrides.scheduler ?? defaultScheduler,
+    ...(overrides.settlement?.pollMs === undefined ? {} : { pollMs: overrides.settlement.pollMs }),
+    ...(overrides.settlement?.maxBackoffMs === undefined
+      ? {}
+      : { maxBackoffMs: overrides.settlement.maxBackoffMs }),
+  })
   return {
     app,
+    start() {
+      processor.start()
+    },
+    runOnce: () => processor.runOnce(),
     close: async () => {
+      await processor.stop()
       await app.close()
       db?.close()
+    },
+  }
+}
+
+const defaultScheduler: Scheduler = {
+  setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimeout: (handle) => {
+    clearTimeout(handle as ReturnType<typeof setTimeout>)
+  },
+}
+
+function toLogger(log: {
+  info(fields: object, message: string): void
+  warn(fields: object, message: string): void
+  error(fields: object, message: string): void
+}): Logger {
+  return {
+    info: (fields, message) => {
+      log.info(fields, message)
+    },
+    warn: (fields, message) => {
+      log.warn(fields, message)
+    },
+    error: (fields, message) => {
+      log.error(fields, message)
     },
   }
 }
@@ -156,6 +208,8 @@ function lazyPayments(config: Config, clock: Clock): PaymentsNetwork {
     createQuote: (input) => load().then((network) => network.createQuote(input)),
     createOutgoingPayment: (input) =>
       load().then((network) => network.createOutgoingPayment(input)),
+    findOutgoingPaymentByQuote: (input) =>
+      load().then((network) => network.findOutgoingPaymentByQuote(input)),
     getOutgoingPayment: (id, accessToken) =>
       load().then((network) => network.getOutgoingPayment(id, accessToken)),
     getIncomingPayment: (url) => load().then((network) => network.getIncomingPayment(url)),

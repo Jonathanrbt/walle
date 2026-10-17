@@ -79,6 +79,20 @@ describe('createGrantGateway', () => {
       accessToken: finished.accessToken,
     })
 
+    expect(request).toHaveBeenCalledWith(
+      { url: 'https://auth.example.test/store' },
+      expect.objectContaining({
+        access_token: {
+          access: [
+            expect.objectContaining({
+              type: 'outgoing-payment',
+              actions: ['create', 'read', 'list'],
+              identifier: 'https://wallet.example.test/store',
+            }),
+          ],
+        },
+      }),
+    )
     expect(started).toEqual({
       redirectUrl: PENDING.interact.redirect,
       continueUri: PENDING.continue.uri,

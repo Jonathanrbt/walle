@@ -9,6 +9,7 @@ const QUOTE_TTL_MS = 300_000
 export function runPaymentsNetworkContract(
   name: string,
   makeSubject: () => Promise<PaymentsNetwork>,
+  options?: { readonly live?: boolean },
 ): void {
   describe(name, () => {
     let network: PaymentsNetwork | undefined
@@ -51,6 +52,49 @@ export function runPaymentsNetworkContract(
       })
       await expect(quote).rejects.toBeInstanceOf(PaymentsNetworkError)
       await expect(quote).rejects.toMatchObject({ kind: 'rejected' })
+    })
+
+    if (options?.live === true) {
+      it('reads outgoing payments by quote without creating one', async () => {
+        const token = process.env.STORE_OUTGOING_TOKEN
+        if (token === undefined || token.length === 0) {
+          await expect(
+            subject().findOutgoingPaymentByQuote({
+              quoteId: 'https://example.invalid/quotes/not-created',
+              accessToken: 'missing-grant',
+            }),
+          ).rejects.toBeInstanceOf(PaymentsNetworkError)
+          return
+        }
+        const found = await subject().findOutgoingPaymentByQuote({
+          quoteId: `https://example.invalid/quotes/${Date.now().toString()}`,
+          accessToken: token,
+        })
+        expect(found).toBeUndefined()
+      })
+      return
+    }
+
+    it('finds the outgoing payment created from a quote', async () => {
+      const incoming = await subject().createIncomingPayment({})
+      const quote = await subject().createQuote({
+        incomingPaymentUrl: incoming.url,
+        debit: COP(10_000_000n),
+      })
+      const created = await subject().createOutgoingPayment({
+        quoteId: quote.id,
+        accessToken: 'grant-token',
+      })
+      const found = await subject().findOutgoingPaymentByQuote({
+        quoteId: quote.id,
+        accessToken: 'grant-token',
+      })
+      expect(found).toEqual({ id: created.id })
+      const missing = await subject().findOutgoingPaymentByQuote({
+        quoteId: 'https://payments.invalid/quotes/missing',
+        accessToken: 'grant-token',
+      })
+      expect(missing).toBeUndefined()
     })
   })
 }
