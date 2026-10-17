@@ -1,8 +1,14 @@
-import { Networks } from '@stellar/stellar-sdk'
+import { Keypair, Networks } from '@stellar/stellar-sdk'
 import { describe, expect, it } from 'vitest'
 import { money } from '../../shared/money.ts'
 import { StellarError } from '../../treasury/usdc-network.ts'
-import { assertMemoText, doubledBaseFee, usdcPaymentAmount } from './amounts.ts'
+import {
+  assertMemoText,
+  assertTransferDestination,
+  doubledBaseFee,
+  trustlineCanReceive,
+  usdcPaymentAmount,
+} from './amounts.ts'
 import { envelopeIsDead } from './dead-envelope.ts'
 import { attemptFromHorizonError, settleSubmit } from './submit-outcome.ts'
 import { TESTNET_PASSPHRASE, TRANSFER_WINDOW_SECONDS } from './envelope.ts'
@@ -24,6 +30,53 @@ describe('USDC amount conversion', () => {
     expect(kind(() => usdcPaymentAmount(money(0n, 'USDC', 7)))).toBe('invalid')
     expect(kind(() => usdcPaymentAmount(money(1n, 'USDC', 3)))).toBe('invalid')
     expect(kind(() => usdcPaymentAmount(money(1n, 'USDC', 8)))).toBe('invalid')
+  })
+})
+
+describe('transfer destination', () => {
+  it('accepts an Ed25519 account and rejects other shapes', () => {
+    expect(() => {
+      assertTransferDestination(Keypair.random().publicKey())
+    }).not.toThrow()
+    expect(
+      kind(() => {
+        assertTransferDestination('not-an-address')
+      }),
+    ).toBe('invalid')
+    expect(
+      kind(() => {
+        assertTransferDestination(`S${'A'.repeat(55)}`)
+      }),
+    ).toBe('invalid')
+  })
+})
+
+describe('trustline room', () => {
+  it('counts buying liabilities against the limit and ignores selling liabilities', () => {
+    expect(
+      trustlineCanReceive({
+        balance: 5n,
+        buyingLiabilities: 4n,
+        limit: 10n,
+        authorized: true,
+      }),
+    ).toBe(true)
+    expect(
+      trustlineCanReceive({
+        balance: 5n,
+        buyingLiabilities: 5n,
+        limit: 10n,
+        authorized: true,
+      }),
+    ).toBe(false)
+    expect(
+      trustlineCanReceive({
+        balance: 0n,
+        buyingLiabilities: 0n,
+        limit: 10n,
+        authorized: false,
+      }),
+    ).toBe(false)
   })
 })
 

@@ -166,15 +166,45 @@ describe('createOperatorService', () => {
     expect(right.usdc).toEqual(money(1_000n, 'USDC', 2))
   })
 
-  it('returns the reserved figure when the chain is already at the float', async () => {
+  it('refills until available USDC reaches the float when funds are reserved', async () => {
     const network = await fund(new ScriptedUsdcNetwork(), money(100_000_000n, 'USDC', 7))
     const { repo, service } = serviceFor(network, { usdcFloat: '10.00' })
     await repo.insert(quoted('held', START, money(400n, 'USDC', 2), 'sending_usdc'))
 
     const result = await service.refill()
     expect(network.refills).toBe(1)
-    expect(result.usdc).toEqual(money(600n, 'USDC', 2))
-    expect(await network.balance()).toEqual(money(100_000_000n, 'USDC', 7))
+    expect(result.usdc).toEqual(money(1_000n, 'USDC', 2))
+    expect(await network.balance()).toEqual(money(140_000_000n, 'USDC', 7))
+  })
+
+  it('accepts an already-at-target refill when the balance did reach the target', async () => {
+    class CreditThenClaim extends ScriptedUsdcNetwork {
+      override refill(input: { targetUsdc: Money }): Promise<RefillResult> {
+        this.refills += 1
+        this.setOperatorUsdc(input.targetUsdc)
+        return Promise.reject(new StellarError('invalid', 'operator USDC is already at the target'))
+      }
+    }
+    const network = await fund(new CreditThenClaim(), money(100_000n, 'USDC', 7))
+    const result = await serviceFor(network, { usdcFloat: '10.00' }).service.refill()
+    expect(network.refills).toBe(1)
+    expect(result.usdc).toEqual(money(1_000n, 'USDC', 2))
+  })
+
+  it('reports the shortfall when a refill leaves the balance under the target', async () => {
+    class StuckRefill extends ScriptedUsdcNetwork {
+      override refill(): Promise<RefillResult> {
+        this.refills += 1
+        return Promise.resolve({ txHash: 'stuck', usdc: money(0n, 'USDC', 7) })
+      }
+    }
+    const network = await fund(new StuckRefill(), money(100_000n, 'USDC', 7))
+    const service = serviceFor(network, { usdcFloat: '10.00' }).service
+    await expect(service.refill()).rejects.toMatchObject({
+      code: 'backend_down',
+      detail: 'USDC refill is short by 9.9900000',
+    })
+    expect(await network.balance()).toEqual(money(100_000n, 'USDC', 7))
   })
 
   it('maps stellar failures to backend_down', async () => {
@@ -261,5 +291,25 @@ describe('createOperatorService', () => {
       code: 'backend_down',
       detail: 'reserved USDC is not scale 2',
     })
+
+    const failing = await readyNetwork(money(10_000_000n, 'USDC', 7))
+    const broken = createMemoryCashInRepository()
+    const cashInsDown: CashInRepository = {
+      ...broken,
+      reservedUsdc: () => Promise.reject(new Error('sqlite secret path /tmp/walle.db')),
+    }
+    const down = createOperatorService({
+      cashIns: cashInsDown,
+      usdcNetwork: failing,
+      clock: new ManualClock(START),
+      mutex: new Mutex(),
+      usdcFloat: '10.00',
+      lowThresholdPct: 30,
+    })
+    await expect(down.inventory()).rejects.toMatchObject({
+      code: 'backend_down',
+      detail: undefined,
+    })
+    await expect(down.inventory()).rejects.not.toThrow(/secret/)
   })
 })

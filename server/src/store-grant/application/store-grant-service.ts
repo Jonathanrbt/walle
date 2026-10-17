@@ -9,6 +9,12 @@ import { StoreGrantError } from './errors.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const ROTATE_BEFORE_MS = 60_000
+const DEFAULT_ROTATE_TIMEOUT_MS = 10_000
+
+/** Starts a one-shot timer. The returned function cancels it. */
+export interface TimeoutTimer {
+  start(ms: number, onFire: () => void): () => void
+}
 
 export interface GrantSnapshot {
   readonly status: 'active' | 'missing' | 'expired'
@@ -33,6 +39,8 @@ export interface StoreGrantServiceDeps {
   readonly mutex: Mutex
   readonly dailyGrantLimitCop: string
   readonly publicBaseUrl: string
+  readonly rotateTimeoutMs?: number
+  readonly timer?: TimeoutTimer
 }
 
 export class StoreGrantService {
@@ -43,6 +51,8 @@ export class StoreGrantService {
   readonly #mutex: Mutex
   readonly #dailyGrantLimitCop: string
   readonly #publicBaseUrl: string
+  readonly #rotateTimeoutMs: number
+  readonly #timer: TimeoutTimer
 
   constructor(deps: StoreGrantServiceDeps) {
     this.#grants = deps.grants
@@ -52,6 +62,8 @@ export class StoreGrantService {
     this.#mutex = deps.mutex
     this.#dailyGrantLimitCop = deps.dailyGrantLimitCop
     this.#publicBaseUrl = deps.publicBaseUrl
+    this.#rotateTimeoutMs = deps.rotateTimeoutMs ?? DEFAULT_ROTATE_TIMEOUT_MS
+    this.#timer = deps.timer ?? defaultTimer()
   }
 
   start(): Promise<StartResult> {
@@ -95,6 +107,7 @@ export class StoreGrantService {
     }
   }
 
+  // The lock covers the payment call too: a rotation must not invalidate a token another caller is sending.
   withAccessToken<T>(fn: (token: string) => Promise<T>): Promise<T> {
     return this.#mutex.run(() => this.#withAccessToken(fn))
   }
@@ -193,7 +206,11 @@ export class StoreGrantService {
     if (accessToken === undefined || manageUrl === undefined) {
       throw new StoreGrantError('no_grant', 'store grant has no access token')
     }
-    const rotated = await this.#gateway.rotate({ manageUrl, accessToken })
+    const rotated = await withDeadline(
+      this.#gateway.rotate({ manageUrl, accessToken }),
+      this.#rotateTimeoutMs,
+      this.#timer,
+    )
     return this.#persistRotation(current, rotated)
   }
 
@@ -222,6 +239,46 @@ export class StoreGrantService {
       return retry
     }
   }
+}
+
+function defaultTimer(): TimeoutTimer {
+  return {
+    start(ms, onFire) {
+      const handle = setTimeout(onFire, ms)
+      return () => {
+        clearTimeout(handle)
+      }
+    },
+  }
+}
+
+function withDeadline<T>(work: Promise<T>, ms: number, timer: TimeoutTimer): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const cancel = timer.start(ms, () => {
+      if (settled) return
+      settled = true
+      reject(new PaymentsNetworkError('unavailable', 'token rotation timed out'))
+    })
+    const finish = (settle: () => void): void => {
+      if (settled) return
+      settled = true
+      cancel()
+      settle()
+    }
+    work.then(
+      (value) => {
+        finish(() => {
+          resolve(value)
+        })
+      },
+      (error: unknown) => {
+        finish(() => {
+          reject(error instanceof Error ? error : new Error('token rotation failed'))
+        })
+      },
+    )
+  })
 }
 
 function isActive(grant: StoredGrant | undefined): grant is StoredGrant {

@@ -282,8 +282,9 @@ describe('HTTP error handler', () => {
     {
       name: 'invalid amount',
       failure: new DomainError('invalid_amount', 'amount must be a decimal'),
-      status: 400,
-      body: { error: 'invalid_request', detail: 'amount must be a decimal' },
+      status: 500,
+      body: { error: 'internal_error' },
+      hidden: 'amount must be a decimal',
     },
     {
       name: 'other domain error',
@@ -330,6 +331,20 @@ describe('HTTP error handler', () => {
       const response = await app.inject({ method: 'GET', url: '/api/rate?extra=1' })
       expect(response.statusCode).toBe(400)
       expect(ApiError.parse(response.json()).error).toBe('invalid_request')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('logs an uncaught invalid amount as an internal error', async () => {
+    const logs: string[] = []
+    const app = appWith(new DomainError('invalid_amount', 'rescale would drop digits'), logs)
+    try {
+      const response = await app.inject({ method: 'GET', url: '/api/rate' })
+      expect(response.statusCode).toBe(500)
+      expect(response.json()).toEqual({ error: 'internal_error' })
+      expect(response.body).not.toContain('rescale would drop digits')
+      expect(logs.join('')).toContain('unhandled error')
     } finally {
       await app.close()
     }

@@ -40,6 +40,9 @@ export function installErrorHandler(app: FastifyInstance, webBaseUrl: string): v
     }
     if (error instanceof DomainError) {
       const code = fromDomain(error.code)
+      if (code === 'internal_error') {
+        request.log.error({ reqId: request.id, err: error }, 'unhandled error')
+      }
       return sendApi(reply, code, code === 'internal_error' ? undefined : error.message)
     }
     if (isResponseSerializationError(error)) {
@@ -91,7 +94,7 @@ function fromDomain(code: DomainErrorCode): ApiErrorCode {
     case 'version_conflict':
       return 'invalid_state'
     case 'invalid_amount':
-      return 'invalid_request'
+      return 'internal_error'
     case 'asset_mismatch':
       return 'internal_error'
   }

@@ -20,6 +20,7 @@ import {
 } from '../../treasury/usdc-network.ts'
 import {
   assertMemoText,
+  assertTransferDestination,
   decimalStroops,
   doubledBaseFee,
   stroopsDecimal,
@@ -120,6 +121,7 @@ export class HorizonUsdcNetwork implements UsdcNetwork {
     amount: Money
     memo: string
   }): Promise<PreparedTransfer> {
+    assertTransferDestination(input.to)
     assertMemoText(input.memo)
     const amount = usdcPaymentAmount(input.amount)
     return this.mutex.run(async () => {
@@ -335,13 +337,13 @@ function usdcLine(
 
 function trustlineInput(line: Horizon.HorizonApi.BalanceLineAsset): {
   balance: bigint
-  sellingLiabilities: bigint
+  buyingLiabilities: bigint
   limit: bigint
   authorized: boolean
 } {
   return {
     balance: decimalStroops(line.balance, USDC_CODE),
-    sellingLiabilities: decimalStroops(line.selling_liabilities, USDC_CODE),
+    buyingLiabilities: decimalStroops(line.buying_liabilities, USDC_CODE),
     limit: decimalStroops(line.limit, USDC_CODE),
     authorized: line.is_authorized,
   }
