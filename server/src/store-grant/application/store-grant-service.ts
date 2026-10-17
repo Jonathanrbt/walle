@@ -31,6 +31,13 @@ export interface FinishInput {
   readonly interactRef: string
 }
 
+export type StoreGrantEventName =
+  'rotation_timeout' | 'rotation_late_success' | 'rotation_late_failure'
+
+export interface StoreGrantEventDetails {
+  readonly version: number
+}
+
 export interface StoreGrantServiceDeps {
   readonly grants: StoreGrantRepository
   readonly gateway: GrantGateway
@@ -41,6 +48,12 @@ export interface StoreGrantServiceDeps {
   readonly publicBaseUrl: string
   readonly rotateTimeoutMs?: number
   readonly timer?: TimeoutTimer
+  readonly onEvent?: (name: StoreGrantEventName, details: StoreGrantEventDetails) => void
+}
+
+interface InFlightRotation {
+  readonly promise: Promise<StoredGrant>
+  abandon(): void
 }
 
 export class StoreGrantService {
@@ -53,6 +66,9 @@ export class StoreGrantService {
   readonly #publicBaseUrl: string
   readonly #rotateTimeoutMs: number
   readonly #timer: TimeoutTimer
+  readonly #onEvent:
+    ((name: StoreGrantEventName, details: StoreGrantEventDetails) => void) | undefined
+  #flight: InFlightRotation | undefined
 
   constructor(deps: StoreGrantServiceDeps) {
     this.#grants = deps.grants
@@ -64,6 +80,8 @@ export class StoreGrantService {
     this.#publicBaseUrl = deps.publicBaseUrl
     this.#rotateTimeoutMs = deps.rotateTimeoutMs ?? DEFAULT_ROTATE_TIMEOUT_MS
     this.#timer = deps.timer ?? defaultTimer()
+    this.#onEvent = deps.onEvent
+    this.#flight = undefined
   }
 
   start(): Promise<StartResult> {
@@ -181,13 +199,15 @@ export class StoreGrantService {
 
   async #withAccessToken<T>(fn: (token: string) => Promise<T>): Promise<T> {
     let grant = await this.#requireLive()
-    if (expiresSoon(grant, this.#clock.now())) grant = await this.#rotate(grant)
+    if (this.#flight !== undefined || expiresSoon(grant, this.#clock.now())) {
+      grant = await this.#joinRotation(grant)
+    }
     try {
       return await fn(accessTokenOf(grant))
     } catch (error) {
       if (!isUnauthorized(error)) throw error
       const latest = await this.#requireLive()
-      const rotated = await this.#rotate(latest)
+      const rotated = await this.#joinRotation(latest)
       return fn(accessTokenOf(rotated))
     }
   }
@@ -200,44 +220,93 @@ export class StoreGrantService {
     return current
   }
 
-  async #rotate(current: StoredGrant): Promise<StoredGrant> {
+  #joinRotation(current: StoredGrant): Promise<StoredGrant> {
+    const flight = this.#flight ?? this.#beginFlight(current)
+    return withDeadline(flight.promise, this.#rotateTimeoutMs, this.#timer, () => {
+      flight.abandon()
+      this.#emit('rotation_timeout', { version: current.version })
+    })
+  }
+
+  // The auth server can rotate after our deadline. Keep this flight so a late success is saved
+  // and another caller cannot start a second rotate, which would invalidate the first result.
+  #beginFlight(current: StoredGrant): InFlightRotation {
     const accessToken = current.accessToken
     const manageUrl = current.manageUrl
     if (accessToken === undefined || manageUrl === undefined) {
       throw new StoreGrantError('no_grant', 'store grant has no access token')
     }
-    const rotated = await withDeadline(
-      this.#gateway.rotate({ manageUrl, accessToken }),
-      this.#rotateTimeoutMs,
-      this.#timer,
-    )
-    return this.#persistRotation(current, rotated)
+    let abandoned = false
+    const promise = this.#runRotation(current, accessToken, manageUrl, () => abandoned)
+    const flight: InFlightRotation = {
+      promise,
+      abandon() {
+        abandoned = true
+      },
+    }
+    this.#flight = flight
+    const clear = (): void => {
+      if (this.#flight === flight) this.#flight = undefined
+    }
+    void promise.then(clear, clear)
+    return flight
+  }
+
+  async #runRotation(
+    source: StoredGrant,
+    accessToken: string,
+    manageUrl: string,
+    abandoned: () => boolean,
+  ): Promise<StoredGrant> {
+    try {
+      const rotated = await this.#gateway.rotate({ manageUrl, accessToken })
+      const saved = await this.#persistRotation(source, rotated)
+      if (abandoned()) this.#emit('rotation_late_success', { version: saved.version })
+      return saved
+    } catch (error) {
+      if (abandoned()) this.#emit('rotation_late_failure', { version: source.version })
+      throw error
+    }
   }
 
   async #persistRotation(
-    current: StoredGrant,
+    source: StoredGrant,
     rotated: { accessToken: string; manageUrl: string; tokenExpiresAt: Date },
   ): Promise<StoredGrant> {
-    const write = (base: StoredGrant): StoredGrant => ({
+    const current = await this.#grants.get()
+    if (current === undefined || !isLive(current, this.#clock.now())) {
+      throw new StoreGrantError('no_grant', 'store grant is not active')
+    }
+    try {
+      return await this.#commitRotation(source, current, rotated)
+    } catch (error) {
+      if (!isVersionConflict(error)) throw error
+      const latest = await this.#grants.get()
+      if (latest === undefined || !isLive(latest, this.#clock.now())) throw error
+      return this.#commitRotation(source, latest, rotated)
+    }
+  }
+
+  async #commitRotation(
+    source: StoredGrant,
+    base: StoredGrant,
+    rotated: { accessToken: string; manageUrl: string; tokenExpiresAt: Date },
+  ): Promise<StoredGrant> {
+    if (incomingRotationIsStale(base, source, rotated.tokenExpiresAt)) return base
+    const next: StoredGrant = {
       ...base,
       accessToken: rotated.accessToken,
       manageUrl: rotated.manageUrl,
       tokenExpiresAt: rotated.tokenExpiresAt,
       updatedAt: this.#clock.now(),
       version: base.version + 1,
-    })
-    const next = write(current)
-    try {
-      await this.#grants.put(next, current.version)
-      return next
-    } catch (error) {
-      if (!(error instanceof DomainError) || error.code !== 'version_conflict') throw error
-      const latest = await this.#grants.get()
-      if (latest === undefined || !isLive(latest, this.#clock.now())) throw error
-      const retry = write(latest)
-      await this.#grants.put(retry, latest.version)
-      return retry
     }
+    await this.#grants.put(next, base.version)
+    return next
+  }
+
+  #emit(name: StoreGrantEventName, details: StoreGrantEventDetails): void {
+    this.#onEvent?.(name, details)
   }
 }
 
@@ -252,13 +321,22 @@ function defaultTimer(): TimeoutTimer {
   }
 }
 
-function withDeadline<T>(work: Promise<T>, ms: number, timer: TimeoutTimer): Promise<T> {
+function withDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+  timer: TimeoutTimer,
+  onTimeout?: () => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false
     const cancel = timer.start(ms, () => {
       if (settled) return
       settled = true
-      reject(new PaymentsNetworkError('unavailable', 'token rotation timed out'))
+      try {
+        onTimeout?.()
+      } finally {
+        reject(new PaymentsNetworkError('unavailable', 'token rotation timed out'))
+      }
     })
     const finish = (settle: () => void): void => {
       if (settled) return
@@ -308,6 +386,22 @@ function accessTokenOf(grant: StoredGrant): string {
 
 function isUnauthorized(error: unknown): boolean {
   return error instanceof PaymentsNetworkError && error.kind === 'unauthorized'
+}
+
+function isVersionConflict(error: unknown): error is DomainError {
+  return error instanceof DomainError && error.code === 'version_conflict'
+}
+
+function incomingRotationIsStale(
+  stored: StoredGrant,
+  source: StoredGrant,
+  incomingExpiresAt: Date,
+): boolean {
+  if (stored.version <= source.version) return false
+  if (stored.accessToken === undefined || stored.accessToken === source.accessToken) return false
+  const storedExpiresAt = stored.tokenExpiresAt?.getTime()
+  if (storedExpiresAt === undefined) return false
+  return storedExpiresAt >= incomingExpiresAt.getTime()
 }
 
 function joinUrl(base: string, path: string): string {
