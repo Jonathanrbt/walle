@@ -27,6 +27,15 @@ export function isUniqueConstraint(error: unknown): boolean {
   return constraintCode(error) === SQLITE_CONSTRAINT_UNIQUE
 }
 
+/** Idempotency races stay a version conflict. Any other unique index must surface as itself. */
+export function isIdempotencyConstraint(error: unknown): boolean {
+  return isUniqueConstraint(error) && errorText(error).includes('cash_ins.idempotency_key')
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : ''
+}
+
 function isPrimaryKeyConstraint(error: unknown): boolean {
   return constraintCode(error) === SQLITE_CONSTRAINT_PRIMARYKEY
 }

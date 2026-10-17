@@ -53,6 +53,28 @@ runCashInRepositoryContract('memory cash-in repository', memorySubject)
 runCashInRepositoryContract('sqlite :memory: cash-in repository', sqliteMemorySubject)
 runCashInRepositoryContract('sqlite file cash-in repository', sqliteFileSubject)
 
+function quotedRow(id: string, memo: string): CashIn {
+  return {
+    id,
+    status: 'quoted',
+    cop: money(1n, 'COP', 2),
+    usdc: money(1n, 'USDC', 2),
+    copPerUsdc: money(1n, 'COP', 2),
+    expiresAt: new Date('2026-10-17T12:01:00.000Z'),
+    stellarAddress: 'G',
+    memo,
+    customer: { phone: '1', fullName: 'Ada', documentNumber: '1' },
+    openPayments: {
+      incomingPaymentUrl: `https://wallet.example.test/in/${id}`,
+      quoteId: `q-${id}`,
+      incomingCompleted: false,
+    },
+    createdAt: new Date('2026-10-17T12:00:00.000Z'),
+    updatedAt: new Date('2026-10-17T12:00:00.000Z'),
+    version: 1,
+  }
+}
+
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), 'walle-b3-migrate-'))
 }
@@ -226,6 +248,48 @@ describe('sqlite database file', () => {
         version: 1,
       }
       await expect(repo.insert(cashIn)).rejects.toThrow(/CHECK constraint/)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('does not map a unique constraint other than idempotency to a version conflict', async () => {
+    const db = openDatabase(':memory:')
+    try {
+      migrate(db)
+      db.exec('CREATE UNIQUE INDEX cash_ins_memo_unique ON cash_ins (memo)')
+      const repo = new SqliteCashInRepository(db)
+      const first = quotedRow('memo-1', 'SAME-MEMO')
+      const second = quotedRow('memo-2', 'SAME-MEMO')
+      await repo.insert(first)
+      await expect(repo.insert(second)).rejects.toThrow(/UNIQUE constraint failed: cash_ins.memo/)
+      expect(await repo.get('memo-2')).toBeUndefined()
+      await expect(
+        repo.insert(quotedRow('memo-3', 'OTHER'), { key: 'key-1', body: 'a' }),
+      ).resolves.toBeUndefined()
+      await expect(
+        repo.insert(quotedRow('memo-4', 'THIRD'), { key: 'key-1', body: 'b' }),
+      ).rejects.toMatchObject({ code: 'version_conflict' })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('prepares the status query once when the repository is constructed', async () => {
+    const db = openDatabase(':memory:')
+    try {
+      migrate(db)
+      const prepare = db.prepare.bind(db)
+      let calls = 0
+      db.prepare = (sql: string) => {
+        calls += 1
+        return prepare(sql)
+      }
+      const repo = new SqliteCashInRepository(db)
+      const prepared = calls
+      await repo.listByStatus(['quoted', 'settling'])
+      await repo.listByStatus(['settled', 'quoted'])
+      expect(calls).toBe(prepared)
     } finally {
       db.close()
     }

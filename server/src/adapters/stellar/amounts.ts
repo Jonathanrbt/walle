@@ -1,3 +1,5 @@
+import { StrKey } from '@stellar/stellar-sdk'
+
 import { DomainError } from '../../shared/errors.ts'
 import { formatDecimal, money, parseDecimal, rescale, type Money } from '../../shared/money.ts'
 import { StellarError } from '../../treasury/usdc-network.ts'
@@ -47,6 +49,13 @@ export function usdcTarget(amount: Money): Money {
   }
 }
 
+/** A payment destination is an Ed25519 account id. Checked before any Horizon call. */
+export function assertTransferDestination(destination: string): void {
+  if (!StrKey.isValidEd25519PublicKey(destination)) {
+    throw new StellarError('invalid', 'destination is not a Stellar account')
+  }
+}
+
 export function assertMemoText(memo: string): void {
   if (memo.length === 0) throw new StellarError('invalid', 'memo text is required')
   if (Buffer.byteLength(memo, 'utf8') > MEMO_TEXT_MAX_BYTES) {
@@ -81,12 +90,16 @@ export function stroopsDecimal(stroops: bigint, code: string): string {
   return formatDecimal(money(stroops, code, USDC_SCALE))
 }
 
+/**
+ * Room to receive is `limit - balance - buying liabilities`. Selling liabilities reserve
+ * balance for outgoing offers and do not reduce what the account can still accept.
+ */
 export function trustlineCanReceive(input: {
   balance: bigint
-  sellingLiabilities: bigint
+  buyingLiabilities: bigint
   limit: bigint
   authorized: boolean
 }): boolean {
   if (!input.authorized) return false
-  return input.balance + input.sellingLiabilities < input.limit
+  return input.balance + input.buyingLiabilities < input.limit
 }

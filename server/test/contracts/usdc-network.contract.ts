@@ -91,6 +91,15 @@ export function runUsdcNetworkContract(
       expect(Math.abs(maxTime - (now + TRANSFER_WINDOW_SECONDS))).toBeLessThanOrEqual(120)
     }, 60_000)
 
+    it('rejects a bad destination and a non-positive amount before signing', async () => {
+      await expect(
+        fx.network.prepareTransfer({ to: 'not-an-address', amount: ONE_USDC, memo: 'cash-in' }),
+      ).rejects.toMatchObject({ name: 'StellarError', kind: 'invalid' })
+      await expect(
+        fx.network.prepareTransfer({ to: ready, amount: money(0n, 'USDC', 2), memo: 'cash-in' }),
+      ).rejects.toMatchObject({ name: 'StellarError', kind: 'invalid' })
+    })
+
     it('rejects a memo longer than 28 bytes before signing', async () => {
       await expect(
         fx.network.prepareTransfer({ to: ready, amount: TENTH, memo: 'a'.repeat(29) }),

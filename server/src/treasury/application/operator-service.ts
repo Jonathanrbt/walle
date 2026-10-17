@@ -1,6 +1,6 @@
 import type { CashIn } from '../../cash-in/domain/cash-in.ts'
 import type { CashInRepository } from '../../cash-in/repository.ts'
-import { compare, money, parseDecimal, type Money } from '../../shared/money.ts'
+import { add, compare, formatDecimal, money, parseDecimal, type Money } from '../../shared/money.ts'
 import type { Mutex } from '../../shared/mutex.ts'
 import type { Clock } from '../../shared/ports.ts'
 import { StellarError, type UsdcNetwork } from '../usdc-network.ts'
@@ -64,12 +64,12 @@ class OperatorApplication implements OperatorService {
   }
 
   async inventory(): Promise<OperatorInventory> {
-    const available = await this.#available()
+    const position = await this.#position()
     return {
-      usdc: available.usdc,
+      usdc: position.available.usdc,
       floatUsdc: this.#floatUsdc,
       lowThresholdPct: this.#lowThresholdPct,
-      log: { rawAvailable: available.raw },
+      log: { rawAvailable: position.available.raw },
     }
   }
 
@@ -78,26 +78,46 @@ class OperatorApplication implements OperatorService {
   }
 
   async #refill(): Promise<RefillOutcome> {
-    const current = await this.#available()
-    if (compare(current.usdc, this.#floatUsdc) >= 0) return { usdc: current.usdc }
+    const before = await this.#position()
+    if (compare(before.available.usdc, this.#floatUsdc) >= 0) {
+      return { usdc: before.available.usdc }
+    }
+    // Available is balance minus reserved, so the chain must land on float + reserved.
+    const target = add(this.#floatUsdc, before.reserved)
     try {
-      await this.#usdcNetwork.refill({ targetUsdc: this.#floatUsdc })
+      await this.#usdcNetwork.refill({ targetUsdc: target })
     } catch (error) {
       if (!isAlreadyAtTarget(error)) throw asBackendDown(error)
     }
-    const after = await this.#available()
-    return { usdc: after.usdc }
+    const after = await this.#position()
+    const gap = targetStroops(target) - after.balance.amount
+    if (gap > 0n) {
+      throw new OperatorError(
+        'backend_down',
+        `USDC refill is short by ${formatDecimal(money(gap, 'USDC', 7))}`,
+      )
+    }
+    return { usdc: after.available.usdc }
   }
 
-  async #available(): Promise<{ readonly usdc: Money; readonly raw: bigint }> {
+  async #position(): Promise<{
+    readonly balance: Money
+    readonly reserved: Money
+    readonly available: { readonly usdc: Money; readonly raw: bigint }
+  }> {
     let balance: Money
     try {
       balance = await this.#usdcNetwork.balance()
     } catch (error) {
       throw asBackendDown(error)
     }
-    const reserved = await this.#cashIns.reservedUsdc(this.#clock.now())
-    return availableUsdc(balance, reserved)
+    let reserved: Money
+    try {
+      reserved = await this.#cashIns.reservedUsdc(this.#clock.now())
+    } catch (error) {
+      throw asBackendDown(error)
+    }
+    return { balance, reserved, available: availableUsdc(balance, reserved) }
   }
 }
 
@@ -122,17 +142,13 @@ function isAlreadyAtTarget(error: unknown): boolean {
 }
 
 function asBackendDown(error: unknown): OperatorError {
-  if (error instanceof StellarError) {
-    switch (error.kind) {
-      case 'no_path':
-      case 'unavailable':
-      case 'operator_not_ready':
-        return new OperatorError('backend_down', error.detail)
-      case 'invalid':
-        return new OperatorError('backend_down', error.detail)
-    }
-  }
+  if (error instanceof OperatorError) return error
+  if (error instanceof StellarError) return new OperatorError('backend_down', error.detail)
   return new OperatorError('backend_down')
+}
+
+function targetStroops(target: Money): bigint {
+  return target.amount * STROOPS_PER_CENT
 }
 
 function floorDiv(numerator: bigint, denominator: bigint): bigint {

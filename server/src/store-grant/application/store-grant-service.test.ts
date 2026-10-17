@@ -12,7 +12,7 @@ import type { StoredGrant, StoreGrantRepository } from '../repository.ts'
 import { FakeGrantGateway, ManualClock } from '../../../test/fakes/fake-grant-gateway.ts'
 import { createMemoryCashInRepository } from '../../../test/fakes/memory-cash-in-repository.ts'
 import { createMemoryStoreGrantRepository } from '../../../test/fakes/memory-store-grant-repository.ts'
-import { StoreGrantService } from './store-grant-service.ts'
+import { StoreGrantService, type TimeoutTimer } from './store-grant-service.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const START = new Date('2026-10-17T00:00:00.000Z')
@@ -381,6 +381,65 @@ describe('StoreGrantService', () => {
     expect(rotateCalls).toBe(1)
     expect(tokens[0]).toBe(tokens[1])
     expect((await grants.get())?.accessToken).toBe(tokens[0])
+  })
+
+  it('releases the mutex and leaves the grant untouched when rotation times out', async () => {
+    const clock = new ManualClock(START)
+    const inner = new FakeGrantGateway(clock, 120_000)
+    let hang = true
+    const gateway: GrantGateway = {
+      start: (input) => inner.start(input),
+      finish: (input) => inner.finish(input),
+      rotate: (input) => (hang ? new Promise(() => undefined) : inner.rotate(input)),
+    }
+    const grants = createMemoryStoreGrantRepository(createMemoryCashInRepository())
+    let fire: (() => void) | undefined
+    const timer: TimeoutTimer = {
+      start(_ms, onFire) {
+        fire = onFire
+        return () => {
+          if (fire === onFire) fire = undefined
+        }
+      },
+    }
+    let sequence = 0
+    const service = new StoreGrantService({
+      grants,
+      gateway,
+      clock,
+      ids: { next: () => `nonce-${String(++sequence)}` },
+      mutex: new Mutex(),
+      dailyGrantLimitCop: '100.00',
+      publicBaseUrl: 'http://localhost:3000',
+      rotateTimeoutMs: 10_000,
+      timer,
+    })
+    await service.start()
+    const pending = await grants.get()
+    if (pending === undefined) throw new Error('pending missing')
+    const interactRef = 'ref-timeout'
+    const hash = finishHash({
+      nonce: pending.nonce,
+      interactNonce: pending.interactNonce,
+      interactRef,
+      grantEndpoint: pending.grantEndpoint,
+    })
+    const active = await service.finish({ hash, interactRef })
+    clock.advance(61_000)
+    const before = await grants.get()
+    const hung = service.withAccessToken((token) => Promise.resolve(token))
+    await expect.poll(() => fire !== undefined).toBe(true)
+    fire?.()
+    await expect(hung).rejects.toMatchObject({
+      kind: 'unavailable',
+      message: 'token rotation timed out',
+    })
+    expect(await grants.get()).toEqual(before)
+    expect(before?.accessToken).toBe(active.accessToken)
+
+    hang = false
+    const rotated = await service.withAccessToken((token) => Promise.resolve(token))
+    expect(rotated).not.toBe(active.accessToken)
   })
 
   it('leaves the stored grant untouched when rotation fails', async () => {

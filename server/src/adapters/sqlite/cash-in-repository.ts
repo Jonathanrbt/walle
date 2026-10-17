@@ -7,7 +7,13 @@ import type {
   IdempotencyRecord,
 } from '../../cash-in/repository.ts'
 import { money, type Money } from '../../shared/money.ts'
-import { changed, conflict, isUniqueConstraint, runPort, versionConflict } from './constraints.ts'
+import {
+  changed,
+  conflict,
+  isIdempotencyConstraint,
+  runPort,
+  versionConflict,
+} from './constraints.ts'
 
 const COLUMNS = [
   'id',
@@ -106,7 +112,6 @@ interface IdempotencyRow {
 }
 
 export class SqliteCashInRepository implements CashInRepository {
-  readonly #db: DatabaseSync
   readonly #insert: StatementSync
   readonly #update: StatementSync
   readonly #get: StatementSync
@@ -114,9 +119,9 @@ export class SqliteCashInRepository implements CashInRepository {
   readonly #usage: StatementSync
   readonly #reserved: StatementSync
   readonly #idempotency: StatementSync
+  readonly #byStatus: StatementSync
 
   constructor(db: DatabaseSync) {
-    this.#db = db
     this.#insert = db.prepare(INSERT_SQL)
     this.#update = db.prepare(UPDATE_SQL)
     this.#get = db.prepare('SELECT * FROM cash_ins WHERE id = ?')
@@ -124,6 +129,9 @@ export class SqliteCashInRepository implements CashInRepository {
     this.#usage = db.prepare(USAGE_SQL)
     this.#reserved = db.prepare(RESERVED_SQL)
     this.#idempotency = db.prepare('SELECT * FROM cash_ins WHERE idempotency_key = ?')
+    this.#byStatus = db.prepare(
+      'SELECT * FROM cash_ins WHERE status = ? ORDER BY created_at ASC, id ASC',
+    )
   }
 
   insert(cashIn: CashIn, idempotency?: IdempotencyRecord): Promise<void> {
@@ -131,7 +139,7 @@ export class SqliteCashInRepository implements CashInRepository {
       try {
         this.#insert.run(...bindings(cashIn), idempotency?.key ?? null, idempotency?.body ?? null)
       } catch (error) {
-        if (isUniqueConstraint(error)) conflict()
+        if (isIdempotencyConstraint(error)) conflict()
         versionConflict(error)
       }
     })
@@ -171,12 +179,14 @@ export class SqliteCashInRepository implements CashInRepository {
   listByStatus(statuses: readonly CashInStatus[]): Promise<CashIn[]> {
     return runPort(() => {
       if (statuses.length === 0) return []
-      const placeholders = statuses.map(() => '?').join(', ')
-      const rows = this.#db
-        .prepare(
-          `SELECT * FROM cash_ins WHERE status IN (${placeholders}) ORDER BY created_at ASC, id ASC`,
-        )
-        .all(...statuses) as unknown as CashInRow[]
+      const rows: CashInRow[] = []
+      const seen = new Set<string>()
+      for (const status of statuses) {
+        if (seen.has(status)) continue
+        seen.add(status)
+        rows.push(...(this.#byStatus.all(status) as unknown as CashInRow[]))
+      }
+      rows.sort(byCreatedAtThenId)
       return rows.map((row) => mapCashIn(row))
     })
   }
@@ -279,6 +289,14 @@ function mapCashIn(row: CashInRow): CashIn {
     ...(row.stellar_envelope_xdr !== null ? { stellarEnvelopeXdr: row.stellar_envelope_xdr } : {}),
     ...(row.failure_reason !== null ? { failureReason: row.failure_reason } : {}),
   }
+}
+
+function byCreatedAtThenId(left: CashInRow, right: CashInRow): number {
+  if (left.created_at < right.created_at) return -1
+  if (left.created_at > right.created_at) return 1
+  if (left.id < right.id) return -1
+  if (left.id > right.id) return 1
+  return 0
 }
 
 function utcWindow(now: Date, unit: 'day' | 'month'): { start: string; end: string } {

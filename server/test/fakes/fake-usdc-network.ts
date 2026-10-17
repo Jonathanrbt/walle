@@ -2,6 +2,7 @@ import { Asset, Keypair, Operation, StrKey, xdr } from '@stellar/stellar-sdk'
 import { signOperation } from '../../src/adapters/stellar/envelope.ts'
 import {
   assertMemoText,
+  assertTransferDestination,
   decimalStroops,
   doubledBaseFee,
   stroopsDecimal,
@@ -37,6 +38,7 @@ type SubmitFault = 'timeout' | 'bad_seq' | 'underfunded'
 interface Trustline {
   balance: bigint
   sellingLiabilities: bigint
+  buyingLiabilities: bigint
   limit: bigint
   authorized: boolean
 }
@@ -57,6 +59,7 @@ interface LedgerTx {
 export interface TrustlineSeed {
   readonly limit: Money
   readonly balance: Money
+  readonly buyingLiabilities?: Money
 }
 
 /**
@@ -134,7 +137,9 @@ export class FakeUsdcNetwork implements UsdcNetwork {
     const account = this.accountBySecret(secret)
     const limit = seed === undefined ? MAX_LIMIT : usdcTarget(seed.limit).amount
     const balance = seed === undefined ? 0n : usdcTarget(seed.balance).amount
-    account.usdc = { balance, sellingLiabilities: 0n, limit, authorized: true }
+    const buyingLiabilities =
+      seed?.buyingLiabilities === undefined ? 0n : usdcTarget(seed.buyingLiabilities).amount
+    account.usdc = { balance, sellingLiabilities: 0n, buyingLiabilities, limit, authorized: true }
     return Promise.resolve()
   }
 
@@ -143,7 +148,13 @@ export class FakeUsdcNetwork implements UsdcNetwork {
       const account = this.requireOperator()
       if (account.usdc !== null) return Promise.resolve()
       const prepared = this.sign(account, Operation.changeTrust({ asset: this.asset() }), null)
-      account.usdc = { balance: 0n, sellingLiabilities: 0n, limit: MAX_LIMIT, authorized: true }
+      account.usdc = {
+        balance: 0n,
+        sellingLiabilities: 0n,
+        buyingLiabilities: 0n,
+        limit: MAX_LIMIT,
+        authorized: true,
+      }
       this.advance(account, prepared, 'success', '')
       return Promise.resolve()
     })
@@ -178,6 +189,7 @@ export class FakeUsdcNetwork implements UsdcNetwork {
     amount: Money
     memo: string
   }): Promise<PreparedTransfer> {
+    assertTransferDestination(input.to)
     assertMemoText(input.memo)
     const amount = usdcPaymentAmount(input.amount)
     return this.mutex.run(() => {
@@ -402,6 +414,6 @@ export class FakeUsdcNetwork implements UsdcNetwork {
 function receiveCode(line: Trustline | null | undefined, amount: bigint): string | null {
   if (line === undefined || line === null) return 'op_no_trust'
   if (!line.authorized) return 'op_not_authorized'
-  if (line.balance + line.sellingLiabilities + amount > line.limit) return 'op_line_full'
+  if (line.balance + line.buyingLiabilities + amount > line.limit) return 'op_line_full'
   return null
 }
