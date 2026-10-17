@@ -11,7 +11,7 @@ import type { RateProvider } from '../../pricing/rate-provider.ts'
 import type { OperatorService } from '../../treasury/application/operator-service.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
 import { AppError, installErrorHandler } from './errors.ts'
-import { loggerOptions, type LoggerOptions } from './logger.ts'
+import { loggerOptions, redactUrl, type LoggerOptions } from './logger.ts'
 import { registerCashInRoutes, type CashInRoutes } from './routes/cash-ins.ts'
 import { registerGrantRoutes } from './routes/grant.ts'
 import { registerOperatorRoutes } from './routes/operator.ts'
@@ -36,8 +36,31 @@ export interface BuildAppDeps {
 
 export function buildApp(deps: BuildAppDeps) {
   const logger = deps.logger === false ? false : (deps.logger ?? loggerOptions)
-  const app = Fastify({ logger }).withTypeProvider<ZodTypeProvider>()
+  const app = Fastify({ logger, disableRequestLogging: true }).withTypeProvider<ZodTypeProvider>()
   const clock = deps.clock ?? systemClock
+
+  // Request logging is done here so secret query parameters (token, hash, interact_ref) never reach the logs.
+  app.addHook('onRequest', (request, _reply, done) => {
+    request.log.info(
+      {
+        req: {
+          method: request.method,
+          url: redactUrl(request.url),
+          host: request.host,
+          remoteAddress: request.ip,
+        },
+      },
+      'incoming request',
+    )
+    done()
+  })
+  app.addHook('onResponse', (request, reply, done) => {
+    request.log.info(
+      { res: { statusCode: reply.statusCode }, responseTime: reply.elapsedTime },
+      'request completed',
+    )
+    done()
+  })
 
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)

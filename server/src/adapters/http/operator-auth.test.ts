@@ -1,9 +1,12 @@
+import { Writable } from 'node:stream'
+
 import { describe, expect, it } from 'vitest'
 
 import { money } from '../../shared/money.ts'
 import type { StoreGrantService } from '../../store-grant/application/store-grant-service.ts'
 import type { OperatorService } from '../../treasury/application/operator-service.ts'
 import { buildApp } from './app.ts'
+import { loggerOptions } from './logger.ts'
 import { tokenMatches } from './operator-auth.ts'
 
 const TOKEN = 'operator-token-16'
@@ -119,6 +122,73 @@ describe('operator token', () => {
 
       const grant = await app.inject({ method: 'GET', url: '/api/grant' })
       expect(grant.statusCode).toBe(200)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+describe('operator token hygiene', () => {
+  it('never writes the query token to the logs', async () => {
+    const lines: string[] = []
+    const app = buildApp({
+      logger: {
+        ...loggerOptions,
+        level: 'info',
+        stream: new Writable({
+          write(chunk: Buffer, _encoding, callback) {
+            lines.push(chunk.toString())
+            callback()
+          },
+        }),
+      },
+      rate,
+      storeGrant,
+      cashIns,
+      operator,
+      webBaseUrl: WEB,
+      operatorToken: TOKEN,
+    })
+    try {
+      await app.inject({ method: 'GET', url: `/api/grant/start?token=${TOKEN}&x=1` })
+      await app.inject({ method: 'GET', url: '/api/grant/start?token=operator-token-99' })
+    } finally {
+      await app.close()
+    }
+    const text = lines.join('\n')
+    expect(text).toContain('/api/grant/start')
+    expect(text).not.toContain(TOKEN)
+    expect(text).not.toContain('operator-token-99')
+  })
+
+  it('answers a denied operator request once and never runs the handler', async () => {
+    let refills = 0
+    const app = buildApp({
+      logger: false,
+      rate,
+      storeGrant,
+      cashIns,
+      operator: {
+        ...operator,
+        refill: () => {
+          refills += 1
+          return Promise.resolve({ usdc: money(50n, 'USDC', 2) })
+        },
+      },
+      webBaseUrl: WEB,
+      operatorToken: TOKEN,
+    })
+    try {
+      const denied = await app.inject({ method: 'POST', url: '/api/operator/inventory/refill' })
+      expect(denied.statusCode).toBe(401)
+      expect(refills).toBe(0)
+      const allowed = await app.inject({
+        method: 'POST',
+        url: '/api/operator/inventory/refill',
+        headers: { 'x-operator-token': TOKEN },
+      })
+      expect(allowed.statusCode).toBe(200)
+      expect(refills).toBe(1)
     } finally {
       await app.close()
     }

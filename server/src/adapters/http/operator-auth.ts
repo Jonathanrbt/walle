@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 
-import type { FastifyRequest, preHandlerHookHandler } from 'fastify'
+import type { FastifyRequest, preHandlerAsyncHookHandler } from 'fastify'
 
 export const OPERATOR_DENIED = {
   error: 'invalid_request',
@@ -14,12 +14,12 @@ export function tokenMatches(provided: string, expected: string): boolean {
   return timingSafeEqual(left, right)
 }
 
-export function operatorGuard(expected: string): preHandlerHookHandler {
-  return (request, reply, done) => {
+export function operatorGuard(expected: string): preHandlerAsyncHookHandler {
+  return async (request, reply) => {
     if (!tokenMatches(headerToken(request), expected)) {
-      reply.code(401).send(OPERATOR_DENIED)
+      return reply.code(401).send(OPERATOR_DENIED)
     }
-    done()
+    return undefined
   }
 }
 
