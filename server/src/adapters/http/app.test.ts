@@ -24,6 +24,8 @@ const storeGrant: Pick<StoreGrantService, 'start' | 'finish' | 'status'> = {
 const cashIns = {
   create: () => Promise.reject(new Error('unused')),
   get: () => Promise.reject(new Error('unused')),
+  confirm: () => Promise.reject(new Error('unused')),
+  retry: () => Promise.reject(new Error('unused')),
 }
 
 function build() {

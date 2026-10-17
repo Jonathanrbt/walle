@@ -12,6 +12,7 @@ import { migrate } from './adapters/sqlite/migrate.ts'
 import { SqliteStoreGrantRepository } from './adapters/sqlite/store-grant-repository.ts'
 import { HorizonUsdcNetwork } from './adapters/stellar/usdc-network.ts'
 import type { Config } from './config.ts'
+import { ConfirmCashIn } from './cash-in/application/confirm-cash-in.ts'
 import { CreateCashIn } from './cash-in/application/create-cash-in.ts'
 import { GetCashIn } from './cash-in/application/get-cash-in.ts'
 import type { PaymentsNetwork } from './cash-in/payments-network.ts'
@@ -89,6 +90,13 @@ export function composeApp(config: Config, overrides: ComposeOverrides = {}): Ap
     mutex,
   })
   const getCashIn = new GetCashIn({ cashIns, clock })
+  const confirmCashIn = new ConfirmCashIn({
+    cashIns,
+    payments,
+    storeGrant,
+    clock,
+    mutex: new Mutex(),
+  })
   const operator = createOperatorService({
     cashIns,
     usdcNetwork: usdc,
@@ -106,6 +114,8 @@ export function composeApp(config: Config, overrides: ComposeOverrides = {}): Ap
     cashIns: {
       create: (input) => createCashIn.create(input),
       get: (id) => getCashIn.get(id),
+      confirm: (id) => confirmCashIn.confirm(id),
+      retry: (id) => confirmCashIn.retry(id),
     },
     webBaseUrl: config.http.webBaseUrl,
     clock,

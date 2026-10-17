@@ -324,8 +324,12 @@ export function runCashInRepositoryContract(
         await repo.insert(current)
         const steps: readonly { event: CashInEvent; at: Date }[] = [
           {
-            event: { type: 'Confirm', outgoingPaymentId: 'out-path' },
+            event: { type: 'Confirm' },
             at: new Date(expiresAt.getTime() - 1),
+          },
+          {
+            event: { type: 'OutgoingCreated', outgoingPaymentId: 'out-path' },
+            at: new Date('2026-10-17T15:00:01.500Z'),
           },
           { event: { type: 'IncomingCompleted' }, at: new Date('2026-10-17T15:00:02.000Z') },
           {
@@ -513,9 +517,14 @@ export function runCashInRepositoryContract(
 function validEvents(cashIn: CashIn): CashInEvent[] {
   switch (cashIn.status) {
     case 'quoted':
-      return [{ type: 'Confirm', outgoingPaymentId: 'out-prop' }, { type: 'Expire' }]
+      return [{ type: 'Confirm' }, { type: 'Expire' }]
     case 'settling':
-      return [{ type: 'IncomingCompleted' }, { type: 'PaymentFailed', reason: 'declined' }]
+      return cashIn.openPayments.outgoingPaymentId === undefined
+        ? [
+            { type: 'OutgoingCreated', outgoingPaymentId: 'out-prop' },
+            { type: 'PaymentFailed', reason: 'declined' },
+          ]
+        : [{ type: 'IncomingCompleted' }, { type: 'PaymentFailed', reason: 'declined' }]
     case 'settled':
       return [
         { type: 'UsdcSendStarted', stellarEnvelopeXdr: 'xdr-prop', stellarTxHash: 'hash-prop' },

@@ -26,12 +26,14 @@ const STATUSES = [
 
 const EVENT_TYPES = [
   'Confirm',
+  'OutgoingCreated',
   'Expire',
   'IncomingCompleted',
   'PaymentFailed',
   'UsdcSendStarted',
   'UsdcSent',
   'UsdcFailed',
+  'UsdcEnvelopeRebuilt',
   'Retry',
 ] as const satisfies readonly CashInEvent['type'][]
 
@@ -63,8 +65,9 @@ function reach(status: CashInStatus): CashIn {
   if (status === 'quoted') return quoted
   if (status === 'expired') return transition(quoted, { type: 'Expire' }, EXPIRES)
 
-  const settling = transition(quoted, { type: 'Confirm', outgoingPaymentId: OUTGOING }, T1)
-  if (status === 'settling') return settling
+  const claimed = transition(quoted, { type: 'Confirm' }, T1)
+  if (status === 'settling') return claimed
+  const settling = transition(claimed, { type: 'OutgoingCreated', outgoingPaymentId: OUTGOING }, T1)
   if (status === 'failed_payment') {
     return transition(settling, { type: 'PaymentFailed', reason: 'declined' }, T1)
   }
@@ -87,6 +90,8 @@ function reach(status: CashInStatus): CashIn {
 function eventFor(type: CashInEvent['type'], cashIn: CashIn): CashInEvent {
   switch (type) {
     case 'Confirm':
+      return { type }
+    case 'OutgoingCreated':
       return { type, outgoingPaymentId: OUTGOING }
     case 'Expire':
       return { type }
@@ -100,6 +105,8 @@ function eventFor(type: CashInEvent['type'], cashIn: CashIn): CashInEvent {
       return { type, stellarTxHash: cashIn.stellarTxHash ?? HASH }
     case 'UsdcFailed':
       return { type, reason: 'horizon' }
+    case 'UsdcEnvelopeRebuilt':
+      return { type, envelopeXdr: 'rebuilt-xdr', txHash: 'rebuilt-hash' }
     case 'Retry':
       return { type }
     default: {
@@ -118,10 +125,12 @@ function nowFor(status: CashInStatus, type: CashInEvent['type']): Date {
 function allowed(status: CashInStatus, type: CashInEvent['type']): boolean {
   return (
     (status === 'quoted' && (type === 'Confirm' || type === 'Expire')) ||
-    (status === 'settling' && (type === 'IncomingCompleted' || type === 'PaymentFailed')) ||
+    (status === 'settling' &&
+      (type === 'IncomingCompleted' || type === 'PaymentFailed' || type === 'OutgoingCreated')) ||
     (status === 'settled' && type === 'UsdcSendStarted') ||
-    (status === 'sending_usdc' && (type === 'UsdcSent' || type === 'UsdcFailed')) ||
-    (status === 'failed_stellar' && type === 'Retry')
+    (status === 'sending_usdc' &&
+      (type === 'UsdcSent' || type === 'UsdcFailed' || type === 'UsdcEnvelopeRebuilt')) ||
+    (status === 'failed_stellar' && (type === 'Retry' || type === 'UsdcEnvelopeRebuilt'))
   )
 }
 
@@ -148,8 +157,12 @@ describe('transition table', () => {
       switch (type) {
         case 'Confirm':
           expect(after.status).toBe('settling')
-          expect(after.openPayments.outgoingPaymentId).toBe(OUTGOING)
+          expect(after.openPayments.outgoingPaymentId).toBeUndefined()
           expect(after.openPayments.incomingCompleted).toBe(false)
+          break
+        case 'OutgoingCreated':
+          expect(after.status).toBe('settling')
+          expect(after.openPayments.outgoingPaymentId).toBe(OUTGOING)
           break
         case 'Expire':
           expect(after.status).toBe('expired')
@@ -157,7 +170,7 @@ describe('transition table', () => {
         case 'IncomingCompleted':
           expect(after.status).toBe('settled')
           expect(after.openPayments.incomingCompleted).toBe(true)
-          expect(after.openPayments.outgoingPaymentId).toBe(OUTGOING)
+          expect(after.openPayments.outgoingPaymentId).toBe(before.openPayments.outgoingPaymentId)
           break
         case 'PaymentFailed':
           expect(after.status).toBe('failed_payment')
@@ -179,6 +192,12 @@ describe('transition table', () => {
           expect(after.stellarEnvelopeXdr).toBe(XDR)
           expect(after.stellarTxHash).toBe(HASH)
           break
+        case 'UsdcEnvelopeRebuilt':
+          expect(after.status).toBe('sending_usdc')
+          expect(after.stellarEnvelopeXdr).toBe('rebuilt-xdr')
+          expect(after.stellarTxHash).toBe('rebuilt-hash')
+          expect(after.failureReason).toBeUndefined()
+          break
         case 'Retry':
           expect(after.status).toBe('sending_usdc')
           expect(after.stellarEnvelopeXdr).toBe(before.stellarEnvelopeXdr)
@@ -198,9 +217,7 @@ describe('transition table', () => {
     expect(
       codeOf(() => transition(quoted, { type: 'Expire' }, new Date(EXPIRES.getTime() - 1))),
     ).toBe('invalid_transition')
-    expect(
-      codeOf(() => transition(quoted, { type: 'Confirm', outgoingPaymentId: OUTGOING }, EXPIRES)),
-    ).toBe('quote_expired')
+    expect(codeOf(() => transition(quoted, { type: 'Confirm' }, EXPIRES))).toBe('quote_expired')
     const expired = transition(quoted, { type: 'Expire' }, EXPIRES)
     expect(expired.status).toBe('expired')
   })
@@ -218,6 +235,34 @@ describe('transition table', () => {
     expect(envelope).toBe(XDR)
     expect(hash).toBe(HASH)
     expect(codeOf(() => transition(rest, { type: 'Retry' }, T1))).toBe('invalid_transition')
+  })
+
+  it('refuses to rebuild an envelope that was never stored', () => {
+    const failed = reach('failed_stellar')
+    const { stellarEnvelopeXdr: envelope, stellarTxHash: hash, ...rest } = failed
+    expect(envelope).toBe(XDR)
+    expect(hash).toBe(HASH)
+    expect(
+      codeOf(() =>
+        transition(rest, { type: 'UsdcEnvelopeRebuilt', envelopeXdr: 'new', txHash: 'new' }, T1),
+      ),
+    ).toBe('invalid_transition')
+  })
+
+  it('sets the outgoing payment id once and never overwrites it', () => {
+    const claimed = transition(quotedCashIn(), { type: 'Confirm' }, T1)
+    const settling = transition(
+      claimed,
+      { type: 'OutgoingCreated', outgoingPaymentId: OUTGOING },
+      T1,
+    )
+    expect(settling.openPayments.outgoingPaymentId).toBe(OUTGOING)
+    expect(
+      codeOf(() =>
+        transition(settling, { type: 'OutgoingCreated', outgoingPaymentId: 'other' }, T1),
+      ),
+    ).toBe('invalid_transition')
+    expect(settling.openPayments.outgoingPaymentId).toBe(OUTGOING)
   })
 
   it('does not replace an envelope that was already stored', () => {
@@ -241,8 +286,9 @@ describe('transition table', () => {
 
 describe('transition properties', () => {
   const eventArb: fc.Arbitrary<CashInEvent> = fc.oneof(
+    fc.constant({ type: 'Confirm' as const }),
     fc.record({
-      type: fc.constant('Confirm' as const),
+      type: fc.constant('OutgoingCreated' as const),
       outgoingPaymentId: fc.string({ minLength: 1, maxLength: 12 }),
     }),
     fc.constant({ type: 'Expire' as const }),
@@ -264,6 +310,11 @@ describe('transition properties', () => {
       type: fc.constant('UsdcFailed' as const),
       reason: fc.string({ minLength: 1, maxLength: 20 }),
     }),
+    fc.record({
+      type: fc.constant('UsdcEnvelopeRebuilt' as const),
+      envelopeXdr: fc.constantFrom(XDR, 'rebuilt-xdr'),
+      txHash: fc.constantFrom(HASH, 'rebuilt-hash'),
+    }),
     fc.constant({ type: 'Retry' as const }),
   )
 
@@ -283,7 +334,15 @@ describe('transition properties', () => {
               expect(next.version).toBe(before.version + 1)
               expect(TERMINAL.has(before.status)).toBe(false)
               if (next.status === 'completed') expect(before.status).toBe('sending_usdc')
-              if (locked) {
+              if (before.openPayments.outgoingPaymentId !== undefined) {
+                expect(next.openPayments.outgoingPaymentId).toBe(
+                  before.openPayments.outgoingPaymentId,
+                )
+              }
+              const rebuilt =
+                step.event.type === 'UsdcEnvelopeRebuilt' &&
+                (before.status === 'failed_stellar' || before.status === 'sending_usdc')
+              if (locked && !rebuilt) {
                 expect(next.stellarEnvelopeXdr).toBe(locked.xdr)
                 expect(next.stellarTxHash).toBe(locked.hash)
               }

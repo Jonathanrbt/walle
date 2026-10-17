@@ -6,6 +6,8 @@ export const CASH_IN_ERROR_CODES = [
   'backend_down',
   'internal_error',
   'not_found',
+  'quote_expired',
+  'invalid_state',
 ] as const
 
 export type CashInErrorCode = (typeof CASH_IN_ERROR_CODES)[number]
