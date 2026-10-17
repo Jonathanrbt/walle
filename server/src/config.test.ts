@@ -76,7 +76,7 @@ describe('loadConfig', () => {
     expect(config.http.publicBaseUrl).toBe('http://localhost:3000')
     expect(config.http.webBaseUrl).toBe('http://localhost:5173')
     expect(config.http.logLevel).toBe('info')
-    expect(config.business.referenceCopPerUsd).toBe('3900')
+    expect(config.business.referenceCopPerUsd).toBe('3177')
     expect(config.business.spreadPct).toBe('3')
     expect(config.business.dailyGrantLimitCop).toBe('2000000')
     expect(config.business.usdcFloat).toBe('1000')

@@ -102,7 +102,7 @@ Cada tarea: rama `feat/jonatin-backend`, prueba primero, verificación con los c
 
 - [x] **B0 Monorepo y esqueleto de `server/`**: `package.json` raíz con workspaces, `server/` con TS estricto + `erasableSyntaxOnly`, ESLint con tipos, Prettier, Vitest con cobertura, `config.ts` (Zod, mensajes sin valores), `pino` con redacción, fábrica `buildApp()` de Fastify, `GET /healthz`, `server/.env.example`, `server/data/` en `.gitignore`. Verificar que `node:sqlite` y la eliminación de tipos funcionan en Node 24 y 26.
   - Acepta: `npm run -w server typecheck`, `lint`, `test` en verde; prueba de `/healthz` con `inject()`; la configuración inválida falla al arrancar sin imprimir valores.
-- [ ] **B1 Paquete de contratos**: esquemas Zod de todas las formas de `team/contracts.md` (`CashIn`, `Rate`, `Grant`, `Inventory`, `ApiError`, solicitudes) y tipos inferidos; montos como string decimal validado.
+- [x] **B1 Paquete de contratos**: esquemas Zod de todas las formas de `team/contracts.md` (`CashIn`, `Rate`, `Grant`, `Inventory`, `ApiError`, solicitudes) y tipos inferidos; montos como string decimal validado.
   - Acepta: pruebas con ejemplos válidos e inválidos por esquema; los tipos inferidos coinciden con `web/src/api/types.ts` (prueba de tipos con `expectTypeOf`, sin importar desde `web/`).
 - [ ] **B2 Núcleo del dominio**: `Money` (bigint, cambio de escala, redondeo explícito), conversión COP → USDC con spread, `CashIn` y su máquina de estados, política de niveles (100/150/500 USDC; tope UIAF COP 10M / 50M), puertos `Clock` e `IdGenerator`.
   - Acepta: pruebas de propiedades con `fast-check` (sin pérdida en ida y vuelta de escala, nunca se entrega más USDC que el cotizado, solo transiciones de la tabla); cobertura ≥ 90 % en `domain/`.
@@ -146,13 +146,22 @@ Prompt para iniciar o retomar el bucle (por ejemplo con `/loop`):
 
 Entrega: PRs encadenados a `main` cada 2–3 tareas (≈400 líneas por PR): B0–B1, B2–B3, B4–B5, B6–B7, B8–B9, B10–B12.
 
+## Decisiones fijadas por la sonda (2026-10-17)
+- El `incoming payment` del operador va en USD (escala 2), sin `incomingAmount`; el `quote` de la tienda usa `debitAmount` = efectivo en COP. La verdad de la liquidación es `quote.receiveAmount`.
+- Con un incoming abierto, `completed` no se activa solo: B9 espera `outgoing payment` con `sentAmount == debitAmount` y `receivedAmount > 0` en el incoming, y luego el operador lo completa explícitamente (`complete`). B5 lo verifica en testnet; si se comporta distinto, se pasa a un `incomingAmount` calculado con una cotización previa.
+- El mínimo operativo es 31.77 COP; las reglas de nivel 1 ya imponen montos mucho mayores. El vencimiento de la cotización de producto es `min(quote.expiresAt, 60 s)`.
+- `REFERENCE_COP_PER_USD` por defecto pasa a 3177 (la tasa de testnet), de modo que el spread sea el único margen del operador.
+- El cargador de llaves del backend reenvuelve un PEM de una sola línea y acepta una ruta de archivo.
+
 ## Riesgos
 1. Los endpoints del operador no tienen autenticación en el contrato → aceptable en testnet; proponer un token de operador en `team/contracts.md` antes de B10 si `andss-ye` puede enviarlo.
-2. La comisión de testnet en pagos pequeños (débito doble observado en EUR → EUR) → B5 la mide para COP y el límite del `grant` se calcula desde el `debitAmount` de la cotización, no desde el monto en efectivo.
+2. La comisión de testnet: en COP → USD la sonda no encontró comisión fija (en EUR → EUR el débito se duplicaba) → el límite del `grant` se sigue calculando desde el `debitAmount` de la cotización, no desde el monto en efectivo.
 3. El cliente sin `trustline` de USDC no puede recibir → `invalid_address` con detalle; la cuenta patrocinada queda como candidata.
 4. Caída de testnet durante la demo → `grant` aprobado de antemano, inventario prefondeado y el procesador reanuda al volver la red.
 
 ## Evidencia
+- Sonda de testnet COP → USD (2026-10-17, sin commit; scripts descartados): la billetera de la tienda es COP escala 2 y la del operador USD escala 2. Cotización con débito fijo en COP: lineal a ≈3176.98 COP por USD, `receiveAmount` con piso al centavo y `debitAmount` con techo al centavo, sin comisión fija; 20,000 COP → 6.29 USD, 100,000 → 31.47, 412,000 → 129.68. Mínimo que funciona: 31.77 COP → 0.01 USD (31.76 COP responde 400 `non-positive receive amount`). El `quote` vive 300 s; el `incoming payment` 30 días. Un `incomingAmount` en COP sobre la billetera USD responde 400. Un débito fijo contra un incoming sin `incomingAmount` se acepta y deja `completed: false`. El SDK no carga un PEM en una sola línea: hay que reenvolverlo en líneas de 64 caracteres.
+- B1 (2026-10-17, commit `08f287b`): ROJO (módulo inexistente), VERDE 80 pruebas del paquete + 17 del servidor, `typecheck`, `lint` y Prettier en verde; revisión nativa aprobada sin hallazgos.
 - B0 (2026-10-17, commit `fee2141`): ROJO observado (2 archivos sin módulo); VERDE: `typecheck`, `lint`, `format:check` y `vitest` 17/17; `node src/main.ts` arranca con la eliminación nativa de tipos y `/healthz` responde 200; `node:sqlite` importa en Node 24.5 (aviso de API experimental); el `.env` real carga (ajuste: las direcciones de billetera aceptan `$host/ruta`, `host/ruta` o URL completa); 13 pruebas de `scripts/` en verde; 0 valores de `.env` en el diff. Riesgo evaluado: medio, revisión nativa concedida y aprobada con 3 hallazgos informativos (validación del archivo de llave, cobertura de ramas de `loadConfig`, comodines de `redact`), pendientes para B12. Versiones fijadas: fastify 5.12.5, zod 4.6.5, fastify-type-provider-zod 7.0.0, typescript 6.0.3, vitest 5.0.3, eslint 10.12.0, typescript-eslint 8.71.0, prettier 3.9.9, fast-check 4.10.2.
 
 ## Progreso
