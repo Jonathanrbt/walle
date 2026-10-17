@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { readPending } from '../../scripts/prompts/store.mjs';
 import { currentUser } from '../../scripts/prompts/user.mjs';
 
@@ -38,6 +40,13 @@ async function main() {
     pending = readPending(cwd, currentUser(cwd)).length;
   } catch {
     pending = 0;
+  }
+  try {
+    if (/\*\*(Estado|Status):\*\*\s*(BORRADOR|DRAFT)/.test(readFileSync(join(cwd, 'PROJECT.md'), 'utf8'))) {
+      process.stdout.write('PROJECT.md sigue en BORRADOR: sugiere `/kickoff` para definir la idea antes de trabajar en funcionalidades, y `/team-plan` antes de implementar.\n');
+    }
+  } catch {
+    // PROJECT.md is optional.
   }
   if (pending > 0) {
     process.stdout.write(
