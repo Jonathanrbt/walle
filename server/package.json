@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@interledger/open-payments": "7.4.0",
     "@walle/contracts": "*",
     "fastify": "5.12.5",
     "fastify-type-provider-zod": "7.0.0",
