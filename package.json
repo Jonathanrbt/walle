@@ -1,0 +1,13 @@
+{
+  "name": "walle",
+  "private": true,
+  "workspaces": [
+    "server",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run -w server test",
+    "typecheck": "npm run -w server typecheck",
+    "lint": "npm run -w server lint"
+  }
+}
